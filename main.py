@@ -11,7 +11,7 @@ lcd.show("Loading...", 1,5)
 # Animación de carga
 for i in range(20):
     lcd.show("*",2, i)
-    sleep(0.2)
+    sleep(0.1)
 
 
 
