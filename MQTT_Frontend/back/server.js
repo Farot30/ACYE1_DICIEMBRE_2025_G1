@@ -38,7 +38,7 @@ const client = mqtt.connect(brokerUrl, {
 });
 
 client.on('connect', () => {
-  console.log('Conectado exitosamente al broker HiveMQ');
+  console.log('✅ Conectado exitosamente al broker HiveMQ');
   
   // Suscribirse a todos los topics
   const topics = [
@@ -307,7 +307,7 @@ app.get('/api/status', (req, res) => {
 // ============================================
 
 // Abrir puerta
-app.post('/api/led/control', (req, res) => {
+app.post('/api/door/open', (req, res) => {
   const { user } = req.body;
   
   client.publish('/fiusac/datacenter/access', JSON.stringify({
