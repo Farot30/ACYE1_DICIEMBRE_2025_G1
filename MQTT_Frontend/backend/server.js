@@ -27,7 +27,7 @@ client.on('connect', () => {
     console.log('Conectado exitosamente al broker HiveMQ desde Node.js');
     client.subscribe(topic, (err) => {
         if (err) {
-            console.error('❌ Error al suscribirse al topic:', err);
+            console.error('Error al suscribirse al topic:', err);
         } else {
             console.log(`Suscrito al topic: ${topic}`);
         }
