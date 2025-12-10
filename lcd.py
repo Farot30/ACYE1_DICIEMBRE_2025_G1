@@ -14,7 +14,7 @@ class LCDDisplay:
     def show(self, text, line, column):
         """Muestra un texto en la línea indicada (0 o 1)."""
         self.lcd.cursor_pos = (line, column)
-        self.lcd.write_string(text.ljust(16))
+        self.lcd.write_string(text.ljust(20))
 
     
 

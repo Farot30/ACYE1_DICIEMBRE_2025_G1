@@ -1,3 +1,4 @@
+import RPi.GPIO as GPIO
 
 class InfrarrojoSensor:
     def __init__(self, pin):
