@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import '../styles/ChartsSection.css';
 
 function ChartsSection({ historicalData, eventsByType, events }) {
   const [filterType, setFilterType] = useState('all');

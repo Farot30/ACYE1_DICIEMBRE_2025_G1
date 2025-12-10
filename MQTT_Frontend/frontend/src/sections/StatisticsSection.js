@@ -2,6 +2,7 @@ import React from 'react';
 import { 
   TrendingUp, Thermometer, Bell, DoorOpen, Clock, Calendar 
 } from 'lucide-react';
+import '../styles/StatisticsSection.css';
 
 function StatisticsSection({ dailyStats, currentTime }) {
   return (

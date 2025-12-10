@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   DoorOpen, DoorClosed, Wrench, Fan, Power, 
   Send, CheckCircle, AlertCircle, Loader
 } from 'lucide-react';
-import './ControlPanel.css';
+import apiService from '../services/api';
+import '../styles/ControlPanel.css';
 
 function ControlPanel() {
   const [doorStatus, setDoorStatus] = useState('closed');
@@ -16,14 +17,21 @@ function ControlPanel() {
   });
   const [notifications, setNotifications] = useState([]);
 
-  // Simular envío de comando MQTT
-  const sendMQTTCommand = (device, action) => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        console.log(`MQTT Command Sent - Device: ${device}, Action: ${action}`);
-        resolve({ success: true, message: `Comando enviado: ${action}` });
-      }, 1500);
-    });
+  // Cargar estado inicial del sistema
+  useEffect(() => {
+    loadSystemStatus();
+  }, []);
+
+  const loadSystemStatus = async () => {
+    try {
+      const status = await apiService.getStatus();
+      setDoorStatus(status.doorStatus);
+      setMaintenanceMode(status.maintenanceMode);
+      setFanStatus(status.fanStatus);
+    } catch (error) {
+      console.error('Error cargando estado del sistema:', error);
+      addNotification('error', 'Error al cargar estado del sistema');
+    }
   };
 
   const addNotification = (type, message) => {
@@ -37,15 +45,19 @@ function ControlPanel() {
   const handleDoorToggle = async () => {
     setLoading(prev => ({ ...prev, door: true }));
     
-    const newStatus = doorStatus === 'closed' ? 'open' : 'closed';
-    const action = newStatus === 'open' ? 'ABRIR_PUERTA' : 'CERRAR_PUERTA';
-    
     try {
-      await sendMQTTCommand('door', action);
+      const newStatus = doorStatus === 'closed' ? 'open' : 'closed';
+      
+      if (newStatus === 'open') {
+        await apiService.openDoor('Usuario Web');
+      } else {
+        await apiService.closeDoor('Usuario Web');
+      }
+      
       setDoorStatus(newStatus);
       addNotification('success', `Puerta ${newStatus === 'open' ? 'abierta' : 'cerrada'} exitosamente`);
     } catch (error) {
-      addNotification('error', 'Error al ejecutar comando');
+      addNotification('error', `Error al controlar puerta: ${error.message}`);
     } finally {
       setLoading(prev => ({ ...prev, door: false }));
     }
@@ -54,15 +66,14 @@ function ControlPanel() {
   const handleMaintenanceToggle = async () => {
     setLoading(prev => ({ ...prev, maintenance: true }));
     
-    const newMode = !maintenanceMode;
-    const action = newMode ? 'ACTIVAR_MANTENIMIENTO' : 'DESACTIVAR_MANTENIMIENTO';
-    
     try {
-      await sendMQTTCommand('system', action);
+      const newMode = !maintenanceMode;
+      await apiService.toggleMaintenance(newMode, 'Usuario Web');
+      
       setMaintenanceMode(newMode);
       addNotification('success', `Modo mantenimiento ${newMode ? 'activado' : 'desactivado'}`);
     } catch (error) {
-      addNotification('error', 'Error al cambiar modo de mantenimiento');
+      addNotification('error', `Error al cambiar modo de mantenimiento: ${error.message}`);
     } finally {
       setLoading(prev => ({ ...prev, maintenance: false }));
     }
@@ -71,15 +82,14 @@ function ControlPanel() {
   const handleFanToggle = async () => {
     setLoading(prev => ({ ...prev, fan: true }));
     
-    const newStatus = !fanStatus;
-    const action = newStatus ? 'ACTIVAR_VENTILADOR' : 'DESACTIVAR_VENTILADOR';
-    
     try {
-      await sendMQTTCommand('fan', action);
+      const newStatus = !fanStatus;
+      await apiService.toggleFan(newStatus);
+      
       setFanStatus(newStatus);
       addNotification('success', `Ventilador ${newStatus ? 'activado' : 'desactivado'}`);
     } catch (error) {
-      addNotification('error', 'Error al controlar ventilador');
+      addNotification('error', `Error al controlar ventilador: ${error.message}`);
     } finally {
       setLoading(prev => ({ ...prev, fan: false }));
     }
@@ -159,9 +169,9 @@ function ControlPanel() {
             </button>
 
             <div className="mqtt-info">
-              <span className="mqtt-label">Comando MQTT:</span>
+              <span className="mqtt-label">Topic MQTT:</span>
               <code className="mqtt-command">
-                {doorStatus === 'closed' ? 'topic/door/open' : 'topic/door/close'}
+                /fiusac/datacenter/access
               </code>
             </div>
           </div>
@@ -208,9 +218,9 @@ function ControlPanel() {
             </button>
 
             <div className="mqtt-info">
-              <span className="mqtt-label">Comando MQTT:</span>
+              <span className="mqtt-label">Topic MQTT:</span>
               <code className="mqtt-command">
-                {maintenanceMode ? 'topic/maintenance/off' : 'topic/maintenance/on'}
+                /fiusac/datacenter/maintenance
               </code>
             </div>
           </div>
@@ -264,9 +274,9 @@ function ControlPanel() {
             </button>
 
             <div className="mqtt-info">
-              <span className="mqtt-label">Comando MQTT:</span>
+              <span className="mqtt-label">Topic MQTT:</span>
               <code className="mqtt-command">
-                {fanStatus ? 'topic/fan/off' : 'topic/fan/on'}
+                /fiusac/datacenter/fan
               </code>
             </div>
           </div>
@@ -330,14 +340,14 @@ function ControlPanel() {
       <div className="mqtt-connection-info">
         <div className="mqtt-status">
           <div className="mqtt-indicator connected"></div>
-          <span>Conectado al servidor MQTT</span>
+          <span>Conectado al servidor MQTT vía API</span>
         </div>
         <div className="mqtt-details">
           <span className="mqtt-detail-item">
-            <strong>Broker:</strong> mqtt://datacenter.fiusac.edu.gt:1883
+            <strong>API:</strong> {process.env.REACT_APP_API_URL || 'http://localhost:3001'}
           </span>
           <span className="mqtt-detail-item">
-            <strong>Cliente ID:</strong> datacenter_web_001
+            <strong>Broker:</strong> HiveMQ Cloud
           </span>
         </div>
       </div>

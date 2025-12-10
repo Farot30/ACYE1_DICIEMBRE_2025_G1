@@ -3,6 +3,7 @@ import {
   Thermometer, Droplets, DoorOpen, DoorClosed, Shield, 
   Bell, AlertTriangle, CheckCircle 
 } from 'lucide-react';
+import '../styles/RealtimeSection.css';
 
 function RealtimeSection({ realtimeData }) {
   return (
