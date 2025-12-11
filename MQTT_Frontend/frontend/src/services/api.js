@@ -88,24 +88,24 @@ export const apiService = {
 
   // Abrir puerta
   openDoor: async (user = 'Sistema') => {
-    const response = await fetch(`${API_BASE_URL}/api/door/open`, {
+    const response = await fetch(`${API_BASE_URL}/api/door`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ user }),
+      body: JSON.stringify({ action: 'ON' }),
     });
     return handleResponse(response);
   },
 
   // Cerrar puerta
   closeDoor: async (user = 'Sistema') => {
-    const response = await fetch(`${API_BASE_URL}/api/door/close`, {
+    const response = await fetch(`${API_BASE_URL}/api/door`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ user }),
+      body: JSON.stringify({ action: 'OFF' }),
     });
     return handleResponse(response);
   },

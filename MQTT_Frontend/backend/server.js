@@ -56,7 +56,7 @@ app.get('/api/led/status', (req, res) => {
     });
 });
 
-app.post('/api/led/control', (req, res) => {
+app.post('/api/door', (req, res) => {
     const { action } = req.body;
     
     if (!action) {
