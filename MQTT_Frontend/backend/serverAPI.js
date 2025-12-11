@@ -58,18 +58,38 @@ client.on('message', async (topic, message) => {
   const msg = message.toString().trim();
   const now = new Date();
 
+  console.log(`[MQTT RECIBIDO] ${topic} → ${msg}`);
+
   try {
     if (topic === TOPICS.temperature) {
+      console.log(`Guardando temperatura: ${msg}`);  // Agrega esto también
       await Reading.create({ type: 'temperature', value: parseFloat(msg) });
     }
 
     if (topic === TOPICS.humidity) {
+      console.log(`Guardando humedad: ${msg}`);  // Agrega esto también
       await Reading.create({ type: 'humidity', value: parseFloat(msg) });
     }
 
     if (topic === TOPICS.access) {
-      currentStatus.door = msg.toUpperCase();
-      await Event.create({ type: 'door', message: `Puerta ${msg.toUpperCase()}`, user: 'Raspberry' });
+        const msgUpper = msg.toUpperCase();
+
+        // Solo actualizamos el estado interno
+        if (msgUpper === "ON" || msgUpper === "OPEN") {
+            currentStatus.door = "OPEN";
+        } else if (msgUpper === "OFF" || msgUpper === "CLOSED") {
+            currentStatus.door = "CLOSED";
+        }
+
+        // Solo creamos evento si el mensaje viene de la Raspberry (confirmación física)
+        // y es "OPEN" o "CLOSED" → evita duplicados
+        if (msgUpper === "OPEN" || msgUpper === "CLOSED") {
+            await Event.create({
+                type: 'door',
+                message: `Puerta ${msgUpper}`,
+                user: 'Raspberry'
+            });
+        }
     }
 
     if (topic === TOPICS.pir) {
@@ -150,17 +170,6 @@ app.post('/api/door', (req, res) => {                    //Otto USA    /api/door
   res.json({ success: true, action: cmd });
 });
 
-app.post('/api/door/open', (req, res) => {               //Nota: también soporta las rutas separadas
-  client.publish(TOPICS.access, 'ON');
-  Event.create({ type: 'door', message: 'Puerta abierta', user: req.body.user || 'Web' });
-  res.json({ success: true });
-});
-
-app.post('/api/door/close', (req, res) => {
-  client.publish(TOPICS.access, 'OFF');
-  Event.create({ type: 'door', message: 'Puerta cerrada', user: req.body.user || 'Web' });
-  res.json({ success: true });
-});
 
 app.post('/api/maintenance/toggle', async (req, res) => {
   const { enable, user } = req.body;
