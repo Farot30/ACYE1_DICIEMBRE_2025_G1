@@ -163,28 +163,58 @@ app.get('/api/health', (req, res) => res.json({ status: 'OK', mqtt: client.conne
 
 // POSTs - Control (¡OJO A ESTAS DOS RUTAS!)
 app.post('/api/door', (req, res) => {                    //Otto USA    /api/door
-  const { action } = req.body;
+  const { action, user = 'Web' } = req.body;
   const cmd = action.toUpperCase();
-  client.publish(TOPICS.access, cmd);
-  Event.create({ type: 'door', message: `Puerta ${cmd}`, user: req.body.user || 'Web' });
-  res.json({ success: true, action: cmd });
+  
+  // CONVERTIR: El frontend envía "OPEN"/"CLOSE" pero Raspberry espera "ON"/"OFF"
+  let mqttCmd;
+  if (cmd === 'OPEN' || cmd === 'ON') {
+    mqttCmd = 'ON';
+  } else if (cmd === 'CLOSE' || cmd === 'CLOSED' || cmd === 'OFF') {
+    mqttCmd = 'OFF';
+  } else {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Comando inválido. Use: OPEN, CLOSE, ON u OFF' 
+    });
+  }
+  
+  client.publish(TOPICS.access, mqttCmd, { qos: 1 });
+  Event.create({ 
+    type: 'door', 
+    message: `Puerta ${cmd === 'OPEN' ? 'abriendo' : 'cerrando'}`, 
+    user 
+  });
+  
+  res.json({ 
+    success: true, 
+    action: cmd,
+    mqttCommand: mqttCmd,
+    message: `Comando enviado a Raspberry: ${mqttCmd}` 
+  });
 });
 
-
 app.post('/api/maintenance/toggle', async (req, res) => {
-  const { enable, user } = req.body;
+  const { enable, user = 'Web' } = req.body;
   const cmd = enable ? 'ON' : 'OFF';
-  client.publish(TOPICS.maintenance, cmd);
-  await Event.create({ type: 'maintenance', message: `Mantenimiento ${cmd}`, user: user || 'Web' });
-  res.json({ success: true });
+  client.publish(TOPICS.maintenance, cmd, { qos: 1 });
+  await Event.create({ 
+    type: 'maintenance', 
+    message: `Mantenimiento ${enable ? 'activado' : 'desactivado'}`, 
+    user: user || 'Web' 
+  });
+  res.json({ success: true, command: cmd });
 });
 
 app.post('/api/fan/toggle', (req, res) => {
   const { enable } = req.body;
   const cmd = enable ? 'ON' : 'OFF';
-  client.publish(TOPICS.fan, cmd);
-  Event.create({ type: 'fan', message: `Ventilador ${cmd}` });
-  res.json({ success: true });
+  client.publish(TOPICS.fan, cmd, { qos: 1 });
+  Event.create({ 
+    type: 'fan', 
+    message: `Ventilador ${enable ? 'encendido' : 'apagado'}` 
+  });
+  res.json({ success: true, command: cmd });
 });
 
 //INICIAR

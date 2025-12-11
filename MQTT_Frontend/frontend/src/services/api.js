@@ -87,29 +87,29 @@ export const apiService = {
   // ============================================
 
   // Abrir puerta
-  openDoor: async (user = 'Sistema') => {
-    await fetch(`${API_BASE_URL}/api/door`, {
+  openDoor: async (user = 'Usuario') => {
+    const response = await fetch(`${API_BASE_URL}/api/door`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'ON', user }),
+      body: JSON.stringify({ action: 'OPEN', user }),
     });
+    return handleResponse(response);
   },
 
-  closeDoor: async (user = 'Sistema') => {
-    await fetch(`${API_BASE_URL}/api/door`, {
+  closeDoor: async (user = 'Usuario') => {
+    const response = await fetch(`${API_BASE_URL}/api/door`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'OFF', user }),
+      body: JSON.stringify({ action: 'CLOSE', user }),
     });
+    return handleResponse(response);
   },
 
   // Toggle modo mantenimiento
-  toggleMaintenance: async (enable, user = 'Sistema') => {
+  toggleMaintenance: async (enable, user = 'Usuario') => {
     const response = await fetch(`${API_BASE_URL}/api/maintenance/toggle`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enable, user }),
     });
     return handleResponse(response);
@@ -119,9 +119,7 @@ export const apiService = {
   toggleFan: async (enable) => {
     const response = await fetch(`${API_BASE_URL}/api/fan/toggle`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enable }),
     });
     return handleResponse(response);

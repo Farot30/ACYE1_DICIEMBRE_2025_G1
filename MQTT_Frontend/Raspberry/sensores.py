@@ -112,7 +112,7 @@ def apagar_ventilador():
 # ====================== CALLBACKS MQTT ======================
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("✓ Raspberry Pi conectada a HiveMQ Cloud")
+        print("Raspberry Pi conectada a HiveMQ Cloud")
         print("  Suscrita a comandos de control...")
         # Suscribirse a todos los topics de control
         client.subscribe(TOPICS["access"])
@@ -122,14 +122,14 @@ def on_connect(client, userdata, flags, rc):
         print(f"  Suscrito a: {TOPICS['fan']}")
         print(f"  Suscrito a: {TOPICS['maintenance']}")
     else:
-        print(f"✗ Error de conexión MQTT: {rc}")
+        print(f"Error de conexión MQTT: {rc}")
         print("Códigos de error: 0=OK, 1=Protocolo, 2=ID inválido, 3=Servidor, 4=Credenciales")
 
 def on_message(client, userdata, msg):
     global mantenimiento_on
     try:
         comando = msg.payload.decode().strip().upper()
-        print(f"\n✓ COMANDO RECIBIDO → {msg.topic}: {comando}")
+        print(f"\n COMANDO RECIBIDO → {msg.topic}: {comando}")
 
         if msg.topic == TOPICS["access"]:
             if comando == "ON" or comando == "OPEN":  # Aceptar ambos formatos
@@ -162,11 +162,11 @@ def on_message(client, userdata, msg):
 
 def on_disconnect(client, userdata, rc):
     if rc != 0:
-        print("✗ Conexión MQTT perdida. Intentando reconectar...")
+        print(" Conexión MQTT perdida. Intentando reconectar...")
         while True:
             try:
                 client.reconnect()
-                print("✓ Reconexión exitosa")
+                print(" Reconexión exitosa")
                 break
             except:
                 time.sleep(5)
@@ -198,7 +198,7 @@ try:
     client.loop_start()
     time.sleep(2)  # Esperar conexión inicial
 except Exception as e:
-    print(f"✗ Error conectando al broker: {e}")
+    print(f"Error conectando al broker: {e}")
     print("Verifica:")
     print("1. Conexión a internet")
     print("2. Credenciales MQTT en .env")
@@ -248,10 +248,10 @@ try:
         
         # Leer PIR (movimiento real)
         try:
-            if GPIO.input(PIR_PIN) == GPIO.HIGH:
+            if GPIO.input(PIR_PIN) == GPIO.LOW:
                 if current_time - last_pir_time > 5:  # evitar spam (5 segundos)
                     client.publish(TOPICS["pir"], "1", qos=1)
-                    print("🚨 ¡MOVIMIENTO DETECTADO! (real)")
+                    print(" ¡MOVIMIENTO DETECTADO! (real)")
                     last_pir_time = current_time
         except Exception as e:
             print(f"Error leyendo PIR: {e}")
@@ -279,6 +279,6 @@ finally:
         GPIO.cleanup()
         client.loop_stop()
         client.disconnect()
-        print("✓ Raspberry Pi desconectada correctamente")
+        print(" Raspberry Pi desconectada correctamente")
     except Exception as e:
-        print(f"Error durante limpieza: {e}")
+        print(f"Error durante limpieza: {e}")
