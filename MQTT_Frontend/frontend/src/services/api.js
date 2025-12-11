@@ -88,26 +88,19 @@ export const apiService = {
 
   // Abrir puerta
   openDoor: async (user = 'Sistema') => {
-    const response = await fetch(`${API_BASE_URL}/api/door`, {
+    await fetch(`${API_BASE_URL}/api/door`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action: 'ON' }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ON', user }),
     });
-    return handleResponse(response);
   },
 
-  // Cerrar puerta
   closeDoor: async (user = 'Sistema') => {
-    const response = await fetch(`${API_BASE_URL}/api/door`, {
+    await fetch(`${API_BASE_URL}/api/door`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action: 'OFF' }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'OFF', user }),
     });
-    return handleResponse(response);
   },
 
   // Toggle modo mantenimiento
