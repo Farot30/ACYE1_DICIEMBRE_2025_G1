@@ -25,19 +25,28 @@ function App() {
 
   // Datos para las gráficas (valores por defecto hasta que lleguen del backend)
   const [historicalData, setHistoricalData] = useState([
-    { date: '2024-12-07', temp: 22, humidity: 45 },
-    { date: '2024-12-08', temp: 23, humidity: 46 },
-    { date: '2024-12-09', temp: 21, humidity: 44 }
+    { date: '2025-12-05', temp: 18, humidity: 35 },
+    { date: '2025-12-06', temp: 22, humidity: 42 },
+    { date: '2025-12-07', temp: 26, humidity: 48 },
+    { date: '2025-12-08', temp: 25, humidity: 50 },
+    { date: '2025-12-09', temp: 28, humidity: 55 },
+    { date: '2025-12-10', temp: 30, humidity: 60 }
   ]);
 
   const [eventsByType, setEventsByType] = useState([
-    { type: 'Acceso', count: 0 },
-    { type: 'Temperatura Alta', count: 0 },
-    { type: 'Humedad Alta', count: 0 },
-    { type: 'Intrusión', count: 0 }
+    { type: 'Acceso', count: 5 },
+    { type: 'Temperatura Alta', count: 3 },
+    { type: 'Humedad Alta', count: 2 },
+    { type: 'Intrusión', count: 1 }
   ]);
 
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState([
+    { id: 1, type: 'Acceso', date: '2025-12-10', time: '10:30:15', temp: 25, description: 'Puerta abierta por administrador' },
+    { id: 2, type: 'Temperatura Alta', date: '2025-12-10', time: '11:45:30', temp: 30, description: 'Temperatura crítica detectada' },
+    { id: 3, type: 'Humedad Alta', date: '2025-12-10', time: '12:20:45', temp: 28, description: 'Humedad elevada en el datacenter' },
+    { id: 4, type: 'Intrusión', date: '2025-12-09', time: '23:15:00', temp: 26, description: 'Movimiento detectado por sensor PIR' },
+    { id: 5, type: 'Acceso', date: '2025-12-09', time: '14:30:00', temp: 25, description: 'Acceso autorizado - Personal de mantenimiento' }
+  ]);
 
   const [dailyStats, setDailyStats] = useState({
     maxTemp: 0,
