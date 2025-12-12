@@ -6,6 +6,12 @@ from servomotor import ServoMotor
 from sensorInfrarrojo import InfrarrojoSensor
 import board
 
+estado_led_hum = False
+ultimo_cambio_hum= time.time()
+
+estado_led_temp = False
+ultimo_cambio_temp= time.time()
+
 #funciones auxiliares
 
 def mensaje(dht_sensor, lcd):
@@ -21,22 +27,65 @@ def mensaje(dht_sensor, lcd):
         sleep(2)  # Espera 2 segundos antes de la siguiente lectura
 
 def validacion_temp(dht_sensor, lcd):
-    if dht_sensor.read():
-        if dht_sensor.tempC >= 24.00:
-            lcd.clear()
-            lcd.show("ACTIVANDO VENTILADOR", 1, 0)
-            lcd.show(f"TEMPERATURA > {dht_sensor.tempC:.1f}C", 2, 0)
-            GPIO.output(14, GPIO.LOW)  # desactiva el buzzer
-        elif dht_sensor.tempC >= 28.00:
-            lcd.clear()
-            lcd.show("ALERTA: TEMP CRITICA", 1, 5)
-            lcd.show(f"TEMPERATURA = {dht_sensor.tempC:.1f}C", 2, 0)
-            GPIO.output(14, GPIO.HIGH)  # activa el buzzer
-            GPIO.output(20, GPIO.HIGH)  # Enciende LED verde
-            #colocar funcion para que parpadee el led verde y el buzzer quede fijo sonando
+    global estado_led_temp, ultimo_cambio_temp
+    global estado_led_hum, ultimo_cambio_hum
 
-        elif dht_sensor.tempC < 24.00:
-            GPIO.output(14, GPIO.LOW)  # Desactiva el buzzer
+    if not dht_sensor.read():
+        return  # Si falla la lectura, salir
+
+
+    if dht_sensor.tempC >= 28.00:
+        lcd.clear()
+        lcd.show("ALERTA: TEMP CRITICA", 1, 5)
+        lcd.show(f"TEMPERATURA = {dht_sensor.tempC:.1f}C", 2, 0)
+        GPIO.output(14, GPIO.HIGH)  # activa el buzzer
+            
+        if time.time() - ultimo_cambio_temp >= 1:
+            ultimo_cambio_temp = time.time()
+
+            if estado_led_temp:  # Si el LED está encendido, lo apaga
+                estado_led_temp = False
+                GPIO.output(20, GPIO.LOW)  # Apaga LED verde
+            else:
+                estado_led_temp = True
+                GPIO.output(20, GPIO.HIGH)  # Enciende LED verde
+        return
+
+    if dht_sensor.tempC >= 24.00:
+        lcd.clear()
+        lcd.show("ACTIVANDO VENTILADOR", 1, 0)
+        lcd.show(f"TEMPERATURA > {dht_sensor.tempC:.1f}C", 2, 0)
+        GPIO.output(14, GPIO.LOW)  # desactiva el buzzer
+        GPIO.output(15, GPIO.HIGH)  # Enciende el motor del ventilador
+        GPIO.output(20, GPIO.LOW)  # Apaga LED VERDE
+    else:
+        GPIO.output(15, GPIO.LOW)  # Apaga el motor del ventilador
+        GPIO.output(20, GPIO.LOW)  # Apaga LED VERDE
+        GPIO.output(14, GPIO.LOW)  # Desactiva el buzzer
+
+    if dht_sensor.humidity >= 70.00:
+        lcd.clear()
+        lcd.show("ALERTA: HUMEDAD ALTA", 1, 0)
+        lcd.show(f"HUM = {dht_sensor.humidity:.1f} %", 2, 0)
+
+        if time.time() - ultimo_cambio_hum >= 0.4:
+            ultimo_cambio_hum = time.time()
+
+            if estado_led_hum:
+                estado_led_hum = False
+                GPIO.output(16, GPIO.LOW)   # LED azul OFF
+                GPIO.output(14, GPIO.LOW)   # buzzer OFF
+            else:
+                estado_led_hum = True
+                GPIO.output(16, GPIO.HIGH)   # LED azul ON
+                GPIO.output(14, GPIO.HIGH)   # buzzer ON
+
+    else:
+        estado_led_hum = False
+        GPIO.output(16, GPIO.LOW)
+        GPIO.output(14, GPIO.LOW)
+
+
 
 def sistema_iluminacion(infrarrojo_sensor, lcd):
     if infrarrojo_sensor.leer_estado() == 0:  # Obstáculo detectado
@@ -78,9 +127,16 @@ for i in range(20):
 
 #inicio del programa principal
 try:
+    ultimo_tiempo = 0
     while True: 
-        mensaje(dht_sensor, lcd)
-        validacion_temp(dht_sensor, lcd)
+        ahora=time.time()
+        if ahora - ultimo_tiempo >= 30:  # Lee el sensor cada 30 segundos
+            mensaje(dht_sensor, lcd)
+            ultimo_tiempo = ahora
+            validacion_temp(dht_sensor, lcd)
+
+        
+        
         sistema_iluminacion(infrarrojo_sensor, lcd)
         sleep(1)  # Espera 1 segundo antes de la siguiente lectura
         lcd.clear()
