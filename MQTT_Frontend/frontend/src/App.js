@@ -23,30 +23,17 @@ function App() {
     systemStatus: 'normal'
   });
 
-  // Datos para las gráficas (valores por defecto hasta que lleguen del backend)
-  const [historicalData, setHistoricalData] = useState([
-    { date: '2025-12-05', temp: 18, humidity: 35 },
-    { date: '2025-12-06', temp: 22, humidity: 42 },
-    { date: '2025-12-07', temp: 26, humidity: 48 },
-    { date: '2025-12-08', temp: 25, humidity: 50 },
-    { date: '2025-12-09', temp: 28, humidity: 55 },
-    { date: '2025-12-10', temp: 30, humidity: 60 }
-  ]);
+  // Datos para las gráficas - empezar con array vacío
+  const [historicalData, setHistoricalData] = useState([]);
 
   const [eventsByType, setEventsByType] = useState([
-    { type: 'Acceso', count: 5 },
-    { type: 'Temperatura Alta', count: 3 },
-    { type: 'Humedad Alta', count: 2 },
-    { type: 'Intrusión', count: 1 }
+    { type: 'Acceso', count: 0 },
+    { type: 'Temperatura Alta', count: 0 },
+    { type: 'Humedad Alta', count: 0 },
+    { type: 'Intrusión', count: 0 }
   ]);
 
-  const [events, setEvents] = useState([
-    { id: 1, type: 'Acceso', date: '2025-12-10', time: '10:30:15', temp: 25, description: 'Puerta abierta por administrador' },
-    { id: 2, type: 'Temperatura Alta', date: '2025-12-10', time: '11:45:30', temp: 30, description: 'Temperatura crítica detectada' },
-    { id: 3, type: 'Humedad Alta', date: '2025-12-10', time: '12:20:45', temp: 28, description: 'Humedad elevada en el datacenter' },
-    { id: 4, type: 'Intrusión', date: '2025-12-09', time: '23:15:00', temp: 26, description: 'Movimiento detectado por sensor PIR' },
-    { id: 5, type: 'Acceso', date: '2025-12-09', time: '14:30:00', temp: 25, description: 'Acceso autorizado - Personal de mantenimiento' }
-  ]);
+  const [events, setEvents] = useState([]);
 
   const [dailyStats, setDailyStats] = useState({
     maxTemp: 0,
@@ -72,66 +59,242 @@ function App() {
     }
   }, [isAuthenticated]);
 
+
   // Cargar datos desde el backend
   const loadInitialData = async () => {
     try {
-      // Intentar cargar eventos
-      const eventsData = await apiService.getEvents(null, null, 50);
-      setEvents(eventsData.events || []);
-
-      // Intentar cargar estadísticas
-      const statsData = await apiService.getStats();
-      if (statsData) {
-        setDailyStats({
-          maxTemp: statsData.maxTemp || 0,
-          minTemp: statsData.minTemp || 0,
-          totalAlarms: statsData.totalAlarms || 0,
-          totalAccess: statsData.totalAccess || 0,
-          avgDoorOpenTime: statsData.avgDoorOpenTime || '0m 0s'
-        });
+      console.log('🔄 Cargando datos iniciales...');
+      
+      // Variable para almacenar eventos formateados
+      let formattedEvents = [];
+      
+      // **CAMBIAR LÍMITE AQUÍ** - Cambia 50 por el número que quieras (ej: 100, 200)
+      const eventsData = await apiService.getEvents(null, null, 100);
+      console.log('📥 Eventos recibidos:', eventsData);
+      
+      // El backend devuelve el array directamente, no dentro de .events
+      if (Array.isArray(eventsData) && eventsData.length > 0) {
+        // Formatear eventos para el frontend
+        formattedEvents = eventsData.map(event => ({
+          id: event._id,
+          type: event.type === 'door' ? 'Acceso' : 
+                event.type === 'motion' ? 'Intrusión' : 
+                event.type === 'fan' ? 'Ventilador' : 
+                event.type === 'maintenance' ? 'Mantenimiento' : event.type,
+          date: new Date(event.timestamp).toISOString().split('T')[0],
+          time: new Date(event.timestamp).toLocaleTimeString('es-GT'),
+          temp: 0,
+          description: event.message || 'Sin descripción',
+          timestamp: event.timestamp
+        }));
       }
 
-      // Intentar cargar datos históricos
+      // Cargar estadísticas (para el estado actual del sistema)
+      const statsData = await apiService.getStats();
+      console.log('📊 Stats recibidas:', statsData);
+      
+      if (statsData) {
+        // Actualizar estado del sistema con datos reales
+        setSystemData(prev => ({
+          ...prev,
+          doorStatus: statsData.doorStatus === 'OPEN' ? 'open' : 'closed',
+          fanStatus: statsData.fanStatus === 'ON',
+          maintenanceMode: statsData.maintenanceMode
+        }));
+      }
+
+      // Cargar datos históricos de temperatura y humedad
       const tempData = await apiService.getTemperature();
       const humidityData = await apiService.getHumidity();
       
-      if (tempData.history && humidityData.history) {
-        const combined = tempData.history.map((temp, index) => ({
-          date: temp.timestamp?.split('T')[0] || new Date().toISOString().split('T')[0],
-          temp: temp.value || 0,
-          humidity: humidityData.history[index]?.value || 0
-        }));
-        setHistoricalData(combined.slice(-7));
+      console.log('🌡️ Temperatura recibida:', tempData);
+      console.log('💧 Humedad recibida:', humidityData);
+      
+      // **GENERAR EVENTOS DE ALERTAS BASADOS EN UMBRALES**
+      const TEMP_THRESHOLD = 28;  // °C - Ajusta este valor
+      const HUMIDITY_THRESHOLD = 70; // % - Ajusta este valor
+      
+      // Eventos de temperatura alta
+      if (Array.isArray(tempData) && tempData.length > 0) {
+        tempData.forEach(reading => {
+          if (reading.value > TEMP_THRESHOLD) {
+            formattedEvents.push({
+              id: `temp-${reading._id}`,
+              type: 'Temperatura Alta',
+              date: new Date(reading.timestamp).toISOString().split('T')[0],
+              time: new Date(reading.timestamp).toLocaleTimeString('es-GT'),
+              temp: Math.round(reading.value),
+              description: `Temperatura crítica detectada: ${Math.round(reading.value)}°C (umbral: ${TEMP_THRESHOLD}°C)`,
+              timestamp: reading.timestamp
+            });
+          }
+        });
+      }
+      
+      // Eventos de humedad alta
+      if (Array.isArray(humidityData) && humidityData.length > 0) {
+        humidityData.forEach(reading => {
+          if (reading.value > HUMIDITY_THRESHOLD) {
+            formattedEvents.push({
+              id: `hum-${reading._id}`,
+              type: 'Humedad Alta',
+              date: new Date(reading.timestamp).toISOString().split('T')[0],
+              time: new Date(reading.timestamp).toLocaleTimeString('es-GT'),
+              temp: 0,
+              description: `Humedad elevada detectada: ${Math.round(reading.value)}% (umbral: ${HUMIDITY_THRESHOLD}%)`,
+              timestamp: reading.timestamp
+            });
+          }
+        });
+      }
+      
+      // Ordenar todos los eventos por timestamp (más reciente primero)
+      formattedEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      
+      // Limitar a los últimos 100 eventos
+      formattedEvents = formattedEvents.slice(0, 100);
+      
+      setEvents(formattedEvents);
+      
+      // Calcular eventos por tipo
+      const eventCounts = [
+        { type: 'Acceso', count: formattedEvents.filter(e => e.type === 'Acceso').length },
+        { type: 'Temperatura Alta', count: formattedEvents.filter(e => e.type === 'Temperatura Alta').length },
+        { type: 'Humedad Alta', count: formattedEvents.filter(e => e.type === 'Humedad Alta').length },
+        { type: 'Intrusión', count: formattedEvents.filter(e => e.type === 'Intrusión').length }
+      ];
+      setEventsByType(eventCounts);
+      
+      console.log('📊 Eventos por tipo:', eventCounts);
+
+      // **NUEVO ENFOQUE: Procesar listas separadas y combinar solo donde coincidan**
+      if (Array.isArray(tempData) && tempData.length > 0 && Array.isArray(humidityData) && humidityData.length > 0) {
+        
+        // Ordenar ambas listas por timestamp (más antiguo primero)
+        const sortedTemps = tempData
+          .map(r => ({
+            timestamp: new Date(r.timestamp).getTime(),
+            value: Math.round(r.value),
+            date: new Date(r.timestamp).toISOString().split('T')[0],
+            time: new Date(r.timestamp).toLocaleTimeString('es-GT')
+          }))
+          .sort((a, b) => a.timestamp - b.timestamp);
+        
+        const sortedHumidity = humidityData
+          .map(r => ({
+            timestamp: new Date(r.timestamp).getTime(),
+            value: Math.round(r.value),
+            date: new Date(r.timestamp).toISOString().split('T')[0],
+            time: new Date(r.timestamp).toLocaleTimeString('es-GT')
+          }))
+          .sort((a, b) => a.timestamp - b.timestamp);
+        
+        console.log('📊 Temperaturas ordenadas:', sortedTemps.length);
+        console.log('📊 Humedades ordenadas:', sortedHumidity.length);
+        
+        // **FILTRAR POR LOS ÚLTIMOS 3 DÍAS**
+        const threeDaysAgo = new Date();
+        threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+        const threeDaysAgoTimestamp = threeDaysAgo.getTime();
+        
+        console.log('📅 Filtrando datos desde:', threeDaysAgo.toISOString());
+        
+        // Filtrar temperaturas de los últimos 3 días
+        const recentTemps = sortedTemps.filter(t => t.timestamp >= threeDaysAgoTimestamp);
+        const recentHumidity = sortedHumidity.filter(h => h.timestamp >= threeDaysAgoTimestamp);
+        
+        console.log('📊 Temperaturas últimos 3 días:', recentTemps.length);
+        console.log('📊 Humedades últimos 3 días:', recentHumidity.length);
+        
+        // Combinar datos donde los timestamps coincidan exactamente (o casi)
+        const combined = [];
+        const TOLERANCE_MS = 2000; // 2 segundos de tolerancia
+        
+        recentTemps.forEach(tempReading => {
+          // Buscar la humedad más cercana en tiempo
+          const matchingHumidity = recentHumidity.find(humReading => 
+            Math.abs(humReading.timestamp - tempReading.timestamp) <= TOLERANCE_MS
+          );
+          
+          if (matchingHumidity) {
+            combined.push({
+              timestamp: tempReading.timestamp,
+              date: tempReading.date,
+              time: tempReading.time,
+              temp: tempReading.value,
+              humidity: matchingHumidity.value
+            });
+          }
+        });
+        
+        // Ya no limitamos a 30 puntos - mostramos TODOS los de los últimos 3 días
+        console.log('📊 Datos combinados (últimos 3 días):', combined.length, 'puntos');
+        console.log('📊 Muestra de datos:', combined.slice(0, 3));
+        
+        setHistoricalData(combined);
+        
+        // Actualizar temperatura y humedad en tiempo real (última lectura)
+        if (tempData.length > 0) {
+          setSystemData(prev => ({
+            ...prev,
+            temperature: Math.round(tempData[0].value) || 0
+          }));
+        }
+        
+        if (humidityData.length > 0) {
+          setSystemData(prev => ({
+            ...prev,
+            humidity: Math.round(humidityData[0].value) || 0
+          }));
+        }
+        
+        // Calcular estadísticas del día
+        const temps = tempData.map(r => r.value);
+        const maxTemp = temps.length > 0 ? Math.max(...temps) : 0;
+        const minTemp = temps.length > 0 ? Math.min(...temps) : 0;
+        
+        setDailyStats({
+          maxTemp: Math.round(maxTemp),
+          minTemp: Math.round(minTemp),
+          totalAlarms: formattedEvents.filter(e => 
+            e.type === 'Temperatura Alta' || e.type === 'Humedad Alta'
+          ).length,
+          totalAccess: formattedEvents.filter(e => e.type === 'Acceso').length,
+          avgDoorOpenTime: '0m 0s'
+        });
+      } else {
+        console.log('⚠️ No hay datos suficientes de temperatura o humedad');
       }
 
-      // Calcular eventos por tipo
-      if (eventsData.events && eventsData.events.length > 0) {
-        const eventTypes = ['Acceso', 'Temperatura Alta', 'Humedad Alta', 'Intrusión'];
-        const eventCounts = eventTypes.map(type => ({
-          type,
-          count: eventsData.events.filter(e => e.type === type).length
-        }));
-        setEventsByType(eventCounts);
-      }
+      console.log('✅ Datos cargados exitosamente');
 
     } catch (error) {
-      console.error('Error al cargar datos iniciales:', error);
+      console.error('❌ Error al cargar datos iniciales:', error);
       // Mantener valores por defecto si falla
     }
   };
 
   const fetchSystemStatus = async () => {
     try {
-      const data = await apiService.getStatus();
-      setSystemData({
-        temperature: data.temperature || 0,
-        humidity: data.humidity || 0,
-        doorStatus: data.doorStatus || 'closed',
-        maintenanceMode: data.maintenanceMode || false,
-        fanStatus: data.fanStatus || false,
-        activeAlerts: 2,
+      // Obtener últimas lecturas de temperatura y humedad
+      const tempData = await apiService.getTemperature();
+      const humidityData = await apiService.getHumidity();
+      const statsData = await apiService.getStats();
+      
+      setSystemData(prev => ({
+        ...prev,
+        temperature: (Array.isArray(tempData) && tempData.length > 0) 
+          ? Math.round(tempData[0].value) 
+          : prev.temperature,
+        humidity: (Array.isArray(humidityData) && humidityData.length > 0) 
+          ? Math.round(humidityData[0].value) 
+          : prev.humidity,
+        doorStatus: statsData?.doorStatus === 'OPEN' ? 'open' : 'closed',
+        fanStatus: statsData?.fanStatus === 'ON',
+        maintenanceMode: statsData?.maintenanceMode || false,
+        activeAlerts: 0,
         systemStatus: 'normal'
-      });
+      }));
     } catch (error) {
       console.error('Error al obtener estado del sistema:', error);
     }
