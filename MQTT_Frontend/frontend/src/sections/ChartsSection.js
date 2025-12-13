@@ -88,7 +88,7 @@ function ChartsSection({ historicalData, eventsByType, events }) {
       {!hasData && (
         <div style={{
           padding: '20px',
-          backgroundColor: '#fff3cd',
+          backgroundColor: '#242320ff',
           border: '1px solid #ffc107',
           borderRadius: '8px',
           marginBottom: '20px'

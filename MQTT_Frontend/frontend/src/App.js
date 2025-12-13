@@ -43,6 +43,13 @@ function App() {
     avgDoorOpenTime: '0m 0s'
   });
 
+  const [threeDaysSummary, setThreeDaysSummary] = useState({
+    avgTemp: 0,
+    avgHumidity: 0,
+    totalAccess: 0,
+    systemEfficiency: 0
+  });
+
   // Actualizar hora cada segundo
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -262,6 +269,45 @@ function App() {
           totalAccess: formattedEvents.filter(e => e.type === 'Acceso').length,
           avgDoorOpenTime: '0m 0s'
         });
+
+        // **CALCULAR RESUMEN DE LOS ÚLTIMOS 3 DÍAS**
+        // Usar los datos ya filtrados (recentTemps y recentHumidity)
+        const avgTemp3Days = recentTemps.length > 0 
+          ? recentTemps.reduce((sum, t) => sum + t.value, 0) / recentTemps.length 
+          : 0;
+        
+        const avgHumidity3Days = recentHumidity.length > 0 
+          ? recentHumidity.reduce((sum, h) => sum + h.value, 0) / recentHumidity.length 
+          : 0;
+        
+        // Filtrar eventos de los últimos 3 días
+        const eventsLast3Days = formattedEvents.filter(e => {
+          const eventTimestamp = new Date(e.timestamp).getTime();
+          return eventTimestamp >= threeDaysAgoTimestamp;
+        });
+        
+        const totalAccessLast3Days = eventsLast3Days.filter(e => e.type === 'Acceso').length;
+        
+        // Calcular eficiencia del sistema (ejemplo: basado en lecturas exitosas)
+        const totalReadingsExpected = 3 * 24 * 60 * 6; // 3 días * 24h * 60min * 6 lecturas/min
+        const totalReadingsReceived = recentTemps.length + recentHumidity.length;
+        const systemEfficiency = totalReadingsExpected > 0 
+          ? Math.min((totalReadingsReceived / totalReadingsExpected) * 100, 100)
+          : 0;
+        
+        setThreeDaysSummary({
+          avgTemp: Math.round(avgTemp3Days * 10) / 10, // 1 decimal
+          avgHumidity: Math.round(avgHumidity3Days * 10) / 10, // 1 decimal
+          totalAccess: totalAccessLast3Days,
+          systemEfficiency: Math.round(systemEfficiency * 10) / 10 // 1 decimal
+        });
+        
+        console.log('📊 Resumen 3 días calculado:', {
+          avgTemp: avgTemp3Days,
+          avgHumidity: avgHumidity3Days,
+          totalAccess: totalAccessLast3Days,
+          efficiency: systemEfficiency
+        });
       } else {
         console.log('⚠️ No hay datos suficientes de temperatura o humedad');
       }
@@ -273,6 +319,8 @@ function App() {
       // Mantener valores por defecto si falla
     }
   };
+
+  
 
   const fetchSystemStatus = async () => {
     try {
@@ -357,6 +405,7 @@ function App() {
                       <StatisticsSection 
                         currentTime={currentTime}
                         dailyStats={dailyStats}
+                        threeDaysSummary={threeDaysSummary}
                       />
                     } 
                   />

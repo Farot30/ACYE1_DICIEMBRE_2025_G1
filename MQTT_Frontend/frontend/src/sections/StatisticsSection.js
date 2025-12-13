@@ -1,10 +1,12 @@
+// Reemplaza TODO el archivo StatisticsSection.js
+
 import React from 'react';
 import { 
   TrendingUp, Thermometer, Bell, DoorOpen, Clock, Calendar 
 } from 'lucide-react';
 import '../styles/StatisticsSection.css';
 
-function StatisticsSection({ dailyStats, currentTime }) {
+function StatisticsSection({ dailyStats, currentTime, threeDaysSummary }) {
   return (
     <div className="section-content-wrapper">
       <div className="section-header-main">
@@ -23,7 +25,7 @@ function StatisticsSection({ dailyStats, currentTime }) {
           <div className="stat-details">
             <span className="stat-label-detailed">Temperatura Máxima</span>
             <span className="stat-value-detailed">{dailyStats.maxTemp}°C</span>
-            <span className="stat-sublabel">Registrada a las 09:15 AM</span>
+            <span className="stat-sublabel">Registrada hoy</span>
           </div>
         </div>
 
@@ -34,7 +36,7 @@ function StatisticsSection({ dailyStats, currentTime }) {
           <div className="stat-details">
             <span className="stat-label-detailed">Temperatura Mínima</span>
             <span className="stat-value-detailed">{dailyStats.minTemp}°C</span>
-            <span className="stat-sublabel">Registrada a las 06:30 AM</span>
+            <span className="stat-sublabel">Registrada hoy</span>
           </div>
         </div>
 
@@ -62,7 +64,7 @@ function StatisticsSection({ dailyStats, currentTime }) {
 
         <div className="stat-card-detailed">
           <div className="stat-icon-wrapper purple">
-            <Clock size={28} />
+            <Clock size={16} />
           </div>
           <div className="stat-details">
             <span className="stat-label-detailed">Tiempo Promedio Puerta Abierta</span>
@@ -72,25 +74,25 @@ function StatisticsSection({ dailyStats, currentTime }) {
         </div>
       </div>
 
-      {/* Resumen semanal */}
+      {/* Resumen de 3 días - DATOS REALES */}
       <div className="summary-card">
-        <h3 className="summary-title">Resumen Semanal</h3>
+        <h3 className="summary-title">Resumen de los Últimos 3 Días</h3>
         <div className="summary-grid">
           <div className="summary-item">
             <span className="summary-label">Promedio de Temperatura</span>
-            <span className="summary-value">22.8°C</span>
+            <span className="summary-value">{threeDaysSummary.avgTemp}°C</span>
           </div>
           <div className="summary-item">
             <span className="summary-label">Promedio de Humedad</span>
-            <span className="summary-value">44.5%</span>
+            <span className="summary-value">{threeDaysSummary.avgHumidity}%</span>
           </div>
           <div className="summary-item">
-            <span className="summary-label">Total Accesos Semana</span>
-            <span className="summary-value">84</span>
+            <span className="summary-label">Total Accesos (3 días)</span>
+            <span className="summary-value">{threeDaysSummary.totalAccess}</span>
           </div>
           <div className="summary-item">
             <span className="summary-label">Eficiencia del Sistema</span>
-            <span className="summary-value">98.5%</span>
+            <span className="summary-value">{threeDaysSummary.systemEfficiency}%</span>
           </div>
         </div>
       </div>
