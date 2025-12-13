@@ -6,7 +6,7 @@ import {
 import apiService from '../services/api';
 import '../styles/ControlPanel.css';
 
-function ControlPanel() {
+function ControlPanel({ username })  {
   const [doorStatus, setDoorStatus] = useState('closed');
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [fanStatus, setFanStatus] = useState(false);
@@ -49,9 +49,9 @@ function ControlPanel() {
       const newStatus = doorStatus === 'closed' ? 'open' : 'closed';
       
       if (newStatus === 'open') {
-        await apiService.openDoor('Usuario Web');
+        await apiService.openDoor(username || 'Usuario Web');
       } else {
-        await apiService.closeDoor('Usuario Web');
+        await apiService.closeDoor(username || 'Usuario Web');
       }
       
       setDoorStatus(newStatus);
@@ -68,7 +68,7 @@ function ControlPanel() {
     
     try {
       const newMode = !maintenanceMode;
-      await apiService.toggleMaintenance(newMode, 'Usuario Web');
+      await apiService.toggleMaintenance(newMode, username || 'Usuario Web');
       
       setMaintenanceMode(newMode);
       addNotification('success', `Modo mantenimiento ${newMode ? 'activado' : 'desactivado'}`);

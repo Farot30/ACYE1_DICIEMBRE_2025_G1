@@ -362,7 +362,7 @@ function App() {
                   />
                   <Route 
                     path="/control" 
-                    element={<ControlPanel />} 
+                    element={<ControlPanel username={username} />} 
                   />
                 </Routes>
               </DashboardLayout>
