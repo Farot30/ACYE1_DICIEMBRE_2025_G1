@@ -61,8 +61,17 @@ function App() {
     if (isAuthenticated) {
       loadInitialData();
       fetchSystemStatus();
-      const interval = setInterval(fetchSystemStatus, 5000);
-      return () => clearInterval(interval);
+      
+      // Actualizar estado del sistema cada 3 segundos
+      const systemInterval = setInterval(fetchSystemStatus, 3000);
+      
+      // Actualizar datos históricos y eventos cada 3 segundos
+      const dataInterval = setInterval(loadInitialData, 3000);
+      
+      return () => {
+        clearInterval(systemInterval);
+        clearInterval(dataInterval);
+      };
     }
   }, [isAuthenticated]);
 
