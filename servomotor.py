@@ -6,6 +6,7 @@ class ServoMotor:
         self.pin = pin
         GPIO.setup(self.pin, GPIO.OUT)
         self.pwm = GPIO.PWM(self.pin, frecuencia)  # Frecuencia de 50Hz
+        
     
     def iniciar(self ):
         self.pwm.start(2.5)  # Posición inicial (0 grados)
