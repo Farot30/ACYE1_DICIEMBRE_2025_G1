@@ -92,6 +92,8 @@ def sistema_iluminacion(infrarrojo_sensor, lcd):
         lcd.clear()
         lcd.show("Obstaculo detectado", 0, 0)
         GPIO.output(1, GPIO.HIGH)  # Enciende el LED blanco
+        sleep(5)  # Mantiene el LED encendido durante 5 segundos
+        GPIO.output(1, GPIO.LOW)   # Apaga el LED blanco
     
     else:
         GPIO.output(1, GPIO.LOW)   # Apaga el LED blanco
@@ -100,9 +102,9 @@ def sistema_iluminacion(infrarrojo_sensor, lcd):
 GPIO.setmode(GPIO.BCM) #Usando numeracion GPIO
 GPIO.setup(1, GPIO.OUT) #Led iluminacion (Blanco)
 GPIO.setup(14, GPIO.OUT) #Buzzer
-GPIO.setup(16, GPIO.OUT) #Led azul
-GPIO.setup(21, GPIO.OUT) #LED rojo
-GPIO.setup(20, GPIO.OUT) #LED verde
+GPIO.setup(22, GPIO.OUT) #Led azul
+GPIO.setup(17, GPIO.OUT) #LED rojo
+GPIO.setup(27, GPIO.OUT) #LED verde
 GPIO.setup(15, GPIO.OUT) #motor dc (ventilador)
 
 GPIO.output(14, GPIO.LOW) #Buzzer apagado
@@ -135,9 +137,9 @@ try:
             ultimo_tiempo = ahora
             validacion_temp(dht_sensor, lcd)
 
-        
-        
         sistema_iluminacion(infrarrojo_sensor, lcd)
+        #mas validaciones por agregar aqui
+
         sleep(1)  # Espera 1 segundo antes de la siguiente lectura
         lcd.clear()
 
