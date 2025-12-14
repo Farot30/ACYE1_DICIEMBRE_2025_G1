@@ -47,21 +47,21 @@ TOPICS = {
 }
 # ====================== PINES ======================
 SERVO_PIN   = 12   # Servo para puerta
-FAN_PIN     = 22   # Relé o transistor para ventilador
-PIR_PIN     = 23   # Sensor de movimiento PIR
-DHT_PIN     = board.D24   # DHT11 (datos)
+FAN_PIN     = 15   # Relé o transistor para ventilador
+PIR_PIN     = 26   # Sensor de movimiento PIR
+DHT_PIN     = board.D18   # DHT11 (datos)
 
-BUZZER_PIN  = 17   # Buzzer para alarmas
+BUZZER_PIN  = 14  # Buzzer para alarmas
 
 #LED RGB 1
-LED_R_PIN   = 18   # LED RGB - Rojo
+LED_R_PIN   = 17   # LED RGB - Rojo
 LED_G_PIN   = 27   # LED RGB - Verde
-LED_B_PIN   = 13   # LED RGB - Azul
+LED_B_PIN   = 22   # LED RGB - Azul
 
 #NUEVOS PINES PARA 5.6 (LEDs blancos de iluminación)
-LED_WHITE_1 = 5    # LED blanco 1
-LED_WHITE_2 = 6    # LED blanco 2
-LED_WHITE_3 = 26   # LED blanco 3
+LED_WHITE_1 = 8    # LED blanco 1
+LED_WHITE_2 = 7    # LED blanco 2
+LED_WHITE_3 = 1   # LED blanco 3
 
 # PIN para LED de estado (5.7) - LED RGB 2
 LED_STATUS_R = 19   # LED de estado ROJO (separado o usar los existentes)
@@ -134,7 +134,7 @@ GPIO.output(LED_STATUS_B, GPIO.LOW)
 
 # Sensor DHT11
 try:
-    dht_device = adafruit_dht.DHT11(board.D24)
+    dht_device = adafruit_dht.DHT11(board.D18)
     print("[OK] Sensor DHT11 inicializado")
 except Exception as e:
     print(f"[ERROR] Inicializando DHT11: {e}")
@@ -270,7 +270,7 @@ def abrir_puerta():
         duty = 12.5  # ~180 grados
         servo_pwm.ChangeDutyCycle(duty)
         time.sleep(0.5)
-        servo_pwm.ChangeDutyCycle(0)
+        servo_pwm.ChangeDutyCycle(2.5)
         puerta_abierta = True
         tiempo_puerta_abierta = time.time()
         print("[FISICO] Puerta ABIERTA")
@@ -765,11 +765,11 @@ try:
                             desactivar_alarma_temperatura()
                             client.publish(TOPICS["temp_alarm"], "OFF", qos=1)
                         
-                        if humidity >= 70.0 and not alarma_humedad:
+                        if humidity >= 94.0 and not alarma_humedad:
                             activar_alarma_humedad(humidity)
                             client.publish(TOPICS["hum_alarm"], f"{humidity:.1f}", qos=1)
                         
-                        elif humidity < 70.0 and alarma_humedad:
+                        elif humidity < 94.0 and alarma_humedad:
                             desactivar_alarma_humedad()
                             client.publish(TOPICS["hum_alarm"], "OFF", qos=1)
                             
