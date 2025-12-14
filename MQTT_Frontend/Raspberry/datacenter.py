@@ -30,12 +30,10 @@ print(f"Usuario: {username}")
 print("=" * 60)
 
 # Topics exactos que el backend espera
+# Topics exactos que el backend espera (SOLO SENSORES, NO CONTROL)
 TOPICS = {
     "temperature": "/fiusac/datacenter/temperature",
     "humidity":    "/fiusac/datacenter/humidity",
-    "access":      "/fiusac/datacenter/access",
-    "fan":         "/fiusac/datacenter/fan",
-    "maintenance": "/fiusac/datacenter/maintenance",
     "pir":         "/fiusac/datacenter/pir",
     "temp_alarm":  "/fiusac/datacenter/temp_alarm",
     "hum_alarm":   "/fiusac/datacenter/hum_alarm",
@@ -43,8 +41,23 @@ TOPICS = {
     "intrusion":   "/fiusac/datacenter/intrusion",
     "lighting":    "/fiusac/datacenter/lighting",
     "event":       "/fiusac/datacenter/event",
-    "door_time":   "/fiusac/datacenter/door_time"
+    "door_time":   "/fiusac/datacenter/door_time"  # ← AGREGAR ESTO
 }
+# Topics para COMANDOS (recibir)
+TOPICS_COMMAND = {
+    "access": "/fiusac/datacenter/command/access",
+    "fan": "/fiusac/datacenter/command/fan",
+    "maintenance": "/fiusac/datacenter/command/maintenance"
+}
+
+# Topics para ESTADOS (publicar)
+TOPICS_STATUS = {
+    "access": "/fiusac/datacenter/status/access",
+    "fan": "/fiusac/datacenter/status/fan",
+    "maintenance": "/fiusac/datacenter/status/maintenance",
+    "door_time": "/fiusac/datacenter/door_time"
+}
+
 # ====================== PINES ======================
 SERVO_PIN   = 12   # Servo para puerta
 FAN_PIN     = 15   # Relé o transistor para ventilador
@@ -64,9 +77,9 @@ LED_WHITE_2 = 7    # LED blanco 2
 LED_WHITE_3 = 1   # LED blanco 3
 
 # PIN para LED de estado (5.7) - LED RGB 2
-LED_STATUS_R = 23   # LED de estado ROJO (separado o usar los existentes)
-LED_STATUS_G = 24   # LED de estado VERDE
-LED_STATUS_B = 5   # LED de estado AZUL
+LED_STATUS_R = 5  # LED de estado ROJO (separado o usar los existentes)
+LED_STATUS_G = 23  # LED de estado VERDE
+LED_STATUS_B = 24   # LED de estado AZUL
 
 # ====================== INICIALIZACIÓN LCD ======================
 lcd_available = False  # Definir aquí primero
@@ -264,7 +277,8 @@ def actualizar_lcd_rotativo():
             print(f"[ERROR] Actualizando LCD rotativo: {e}")
 
 # ====================== CONTROL FÍSICO ======================
-def abrir_puerta():
+def abrir_puerta(is_manual_command=True):
+    """is_manual_command: True si viene de comando MQTT, False si es automático"""
     global puerta_abierta, tiempo_puerta_abierta
     try:
         duty = 12.5  # ~180 grados
@@ -275,11 +289,12 @@ def abrir_puerta():
         tiempo_puerta_abierta = time.time()
         print("[FISICO] Puerta ABIERTA")
         
-        # Publicar estado MQTT
-        try:
-            client.publish(TOPICS["access"], "OPEN", qos=1)
-        except:
-            pass
+        # Publicar estado MQTT SOLO si no es comando manual
+        if not is_manual_command:
+            try:
+                client.publish(TOPICS_STATUS["access"], "OPEN", qos=1)  # ← USAR STATUS
+            except:
+                pass
         
         # Actualizar LCD
         if lcd_available:
@@ -293,7 +308,7 @@ def abrir_puerta():
     except Exception as e:
         print(f"[ERROR] Abriendo puerta: {e}")
 
-def cerrar_puerta():
+def cerrar_puerta(is_manual_command=True):
     global puerta_abierta, tiempo_puerta_abierta
     try:
         duty = 2.5   # ~0 grados
@@ -307,20 +322,21 @@ def cerrar_puerta():
             tiempo_abierta = time.time() - tiempo_puerta_abierta
             print(f"[INFO] Puerta estuvo abierta por {tiempo_abierta:.1f} segundos")
             
-            # PUBLICAR TIEMPO VÍA MQTT (REQUISITO 5.4)
+            # PUBLICAR TIEMPO VÍA MQTT (SIEMPRE, es dato nuevo)
             try:
-                client.publish(TOPICS["door_time"], f"{tiempo_abierta:.1f}", qos=1)
+                client.publish(TOPICS["door_time"], f"{tiempo_abierta:.1f}", qos=1)  # ← OK (está en TOPICS)
             except:
                 pass
         
         puerta_abierta = False
         print("[FISICO] Puerta CERRADA")
         
-        # Publicar estado MQTT
-        try:
-            client.publish(TOPICS["access"], "CLOSED", qos=1)
-        except:
-            pass
+        # Publicar estado MQTT SOLO si no es comando manual
+        if not is_manual_command:
+            try:
+                client.publish(TOPICS_STATUS["access"], "CLOSED", qos=1)  # ← USAR STATUS
+            except:
+                pass
         
         # Actualizar LCD
         if lcd_available:
@@ -338,26 +354,30 @@ def cerrar_puerta():
     except Exception as e:
         print(f"[ERROR] Cerrando puerta: {e}")
 
-def encender_ventilador():
+def encender_ventilador(is_manual_command=True):
     global ventilador_on
-    client.publish(TOPICS["fan"], "ON", qos=1) 
-    print("[AUTO] Ventilador activado por temperatura")
     try:
         GPIO.output(FAN_PIN, GPIO.HIGH)
         ventilador_on = True
         print("[FISICO] Ventilador ENCENDIDO")
+        
+        # Publicar estado SOLO si no es comando manual
+        if not is_manual_command:
+            client.publish(TOPICS_STATUS["fan"], "ON", qos=1)  # ← USAR STATUS
                 
     except Exception as e:
         print(f"[ERROR] Encendiendo ventilador: {e}")
 
-def apagar_ventilador():
+def apagar_ventilador(is_manual_command=True):
     global ventilador_on
-    client.publish(TOPICS["fan"], "OFF", qos=1) 
-    print("[AUTO] Ventilador desactivado")
     try:
         GPIO.output(FAN_PIN, GPIO.LOW)
         ventilador_on = False
         print("[FISICO] Ventilador APAGADO")
+        
+        # Publicar estado SOLO si no es comando manual
+        if not is_manual_command:
+            client.publish(TOPICS_STATUS["fan"], "OFF", qos=1)  # ← USAR STATUS
         
     except Exception as e:
         print(f"[ERROR] Apagando ventilador: {e}")
@@ -606,13 +626,13 @@ def on_connect(client, userdata, flags, rc, properties=None):
             except:
                 pass
         
-        # Suscribirse con QoS 1 para recibir mensajes garantizados
-        client.subscribe(TOPICS["access"], qos=1)
-        client.subscribe(TOPICS["fan"], qos=1)
-        client.subscribe(TOPICS["maintenance"], qos=1)
-        print(f"  [OK] Suscrito a: {TOPICS['access']}")
-        print(f"  [OK] Suscrito a: {TOPICS['fan']}")
-        print(f"  [OK] Suscrito a: {TOPICS['maintenance']}")
+        # Suscribirse SOLO a topics de COMANDO (los nuevos)
+        client.subscribe(TOPICS_COMMAND["access"], qos=1)
+        client.subscribe(TOPICS_COMMAND["fan"], qos=1)
+        client.subscribe(TOPICS_COMMAND["maintenance"], qos=1)
+        print(f"  [OK] Suscrito a: {TOPICS_COMMAND['access']}")
+        print(f"  [OK] Suscrito a: {TOPICS_COMMAND['fan']}")
+        print(f"  [OK] Suscrito a: {TOPICS_COMMAND['maintenance']}")
     else:
         print(f"[MQTT ERROR] Codigo: {rc}")
         
@@ -629,58 +649,35 @@ def on_message(client, userdata, msg):
         comando = msg.payload.decode().strip().upper()
         print(f"\n[COMANDO RECIBIDO] {msg.topic}: {comando}")
 
-        if msg.topic == TOPICS["access"]:
+        if msg.topic == TOPICS_COMMAND["access"]:
             if comando == "ON" or comando == "OPEN":
                 print("  -> Ejecutando: ABRIR PUERTA")
-                abrir_puerta()
+                abrir_puerta(is_manual_command=True)  # ← OK, pasando parámetro
             elif comando == "OFF" or comando == "CLOSED":
                 print("  -> Ejecutando: CERRAR PUERTA")
-                cerrar_puerta()
-            else:
-                print(f"  -> Comando no reconocido: {comando}")
+                cerrar_puerta(is_manual_command=True)  # ← OK, pasando parámetro
 
-        elif msg.topic == TOPICS["fan"]:
+        elif msg.topic == TOPICS_COMMAND["fan"]:
             if comando == "ON":
                 print("  -> Ejecutando: ENCENDER VENTILADOR (MANUAL)")
-                encender_ventilador()
-                ventilador_auto = False
-                ventilador_control_manual = True  # <- Importante
-            elif comando == "OFF":
-                print("  -> Ejecutando: APAGAR VENTILADOR (MANUAL)")
-                apagar_ventilador()
+                encender_ventilador(is_manual_command=True)  # ← OK, pasando parámetro
                 ventilador_auto = False
                 ventilador_control_manual = True
-            else:
-                print(f"  -> Comando no reconocido: {comando}")
-
-        elif msg.topic == TOPICS["maintenance"]:
-            if comando == "ON":
-                mantenimiento_on = True
-                print("  -> MODO MANTENIMIENTO ACTIVADO")
-                # Actualizar LCD
-                if lcd_available:
-                    try:
-                        lcd.text("MODO MANTENIMIENTO", 4)
-                    except:
-                        pass
             elif comando == "OFF":
-                mantenimiento_on = False
-                print("  -> MODO MANTENIMIENTO DESACTIVADO")
-                # Actualizar LCD
-                if lcd_available:
-                    try:
-                        lcd.text("Modo: NORMAL", 4)
-                    except:
-                        pass
-            else:
-                print(f"  -> Comando no reconocido: {comando}")
-                
+                print("  -> Ejecutando: APAGAR VENTILADOR (MANUAL)")
+                apagar_ventilador(is_manual_command=True)  # ← OK, pasando parámetro
+                ventilador_auto = False
+                ventilador_control_manual = True
+        # ...
     except Exception as e:
         print(f"[ERROR] Procesando mensaje: {e}")
 
 def on_disconnect(client, userdata, rc, properties=None):
     if rc != 0:
         print(f"[WARNING] Desconectado del broker. Codigo: {rc}")
+        
+# Y configurarlo:
+client.on_disconnect = on_disconnect
 
 # ====================== CLIENTE MQTT ======================
 # Usar API VERSION 2
@@ -744,17 +741,13 @@ try:
                         # CONDICIONAL 5.1: Control automático del ventilador
                         if temperature >= 24.0 and not ventilador_on and not ventilador_control_manual:
                             print("[AUTO] Temperatura ≥24°C - Activando ventilador automáticamente")
-                            encender_ventilador()
+                            encender_ventilador(is_manual_command=False)  # ← NO es comando manual
                             ventilador_auto = True
-                            # Publicar estado del ventilador
-                            client.publish(TOPICS["fan"], "ON", qos=1)
                         
                         elif temperature < 24.0 and ventilador_auto and not ventilador_control_manual:
                             print("[AUTO] Temperatura <24°C - Apagando ventilador automático")
-                            apagar_ventilador()
+                            apagar_ventilador(is_manual_command=False)  # ← NO es comando manual
                             ventilador_auto = False
-                            # Publicar estado del ventilador
-                            client.publish(TOPICS["fan"], "OFF", qos=1)
                         
                         # CONDICIONAL 5.2: Alarma de temperatura crítica
                         if temperature >= 28.0 and not alarma_temperatura:
