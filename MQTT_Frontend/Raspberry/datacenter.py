@@ -299,7 +299,7 @@ def cerrar_puerta():
         duty = 2.5   # ~0 grados
         servo_pwm.ChangeDutyCycle(duty)
         time.sleep(0.5)
-        servo_pwm.ChangeDutyCycle(0)
+        servo_pwm.ChangeDutyCycle(2.5)
         
         # Calcular tiempo que estuvo abierta
         tiempo_abierta = 0
@@ -624,7 +624,7 @@ def on_connect(client, userdata, flags, rc, properties=None):
                 pass
 
 def on_message(client, userdata, msg):
-    global mantenimiento_on, ventilador_auto
+    global mantenimiento_on, ventilador_auto, ventilador_control_manual
     try:
         comando = msg.payload.decode().strip().upper()
         print(f"\n[COMANDO RECIBIDO] {msg.topic}: {comando}")
@@ -649,7 +649,7 @@ def on_message(client, userdata, msg):
                 print("  -> Ejecutando: APAGAR VENTILADOR (MANUAL)")
                 apagar_ventilador()
                 ventilador_auto = False
-                ventilador_control_manual = False
+                ventilador_control_manual = True
             else:
                 print(f"  -> Comando no reconocido: {comando}")
 
