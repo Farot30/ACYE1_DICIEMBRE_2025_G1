@@ -71,18 +71,27 @@ const client = mqtt.connect(process.env.MQTT_BROKER, {
 
 const TOPICS = {
   temperature: '/fiusac/datacenter/temperature',
-  humidity: '/fiusac/datacenter/humidity',
-  access: '/fiusac/datacenter/access',
-  pir: '/fiusac/datacenter/pir',
-  fan: '/fiusac/datacenter/fan',
-  maintenance: '/fiusac/datacenter/maintenance',
-  temp_alarm: '/fiusac/datacenter/temp_alarm',
-  hum_alarm: '/fiusac/datacenter/hum_alarm',
-  alerts: '/fiusac/datacenter/alerts',
+  humidity:    '/fiusac/datacenter/humidity',
+  pir:         '/fiusac/datacenter/pir',
+  temp_alarm:  '/fiusac/datacenter/temp_alarm',
+  hum_alarm:   '/fiusac/datacenter/hum_alarm',
+  alerts:      '/fiusac/datacenter/alerts',
   intrusion:   '/fiusac/datacenter/intrusion',
   lighting:    '/fiusac/datacenter/lighting',
   event:       '/fiusac/datacenter/event',
-  door_time:   '/fiusac/datacenter/door_time'
+  door_time:   '/fiusac/datacenter/door_time',
+  temp_alarm_off: '/fiusac/datacenter/temp_alarm_off',
+  hum_alarm_off: '/fiusac/datacenter/hum_alarm_off',
+  
+  // COMANDOS (para publicar hacia Raspberry)
+  access_command: '/fiusac/datacenter/command/access',
+  fan_command:    '/fiusac/datacenter/command/fan',
+  maintenance_command: '/fiusac/datacenter/command/maintenance',
+  
+  // ESTADOS (para suscribirse desde Raspberry)
+  access_status: '/fiusac/datacenter/status/access',
+  fan_status:    '/fiusac/datacenter/status/fan',
+  maintenance_status: '/fiusac/datacenter/status/maintenance'
 };
 
 let currentStatus = {
@@ -103,7 +112,28 @@ let currentStatus = {
 
 client.on('connect', () => {
   console.log('Conectado a HiveMQ');
-  client.subscribe(Object.values(TOPICS));
+  
+  // Suscribirse SOLO a topics de SENSORES y ESTADOS
+  // NO suscribirse a topics de COMANDO (esos los publicamos nosotros)
+  const topicsToSubscribe = [
+    TOPICS.temperature,
+    TOPICS.humidity,
+    TOPICS.pir,
+    TOPICS.temp_alarm,
+    TOPICS.hum_alarm,
+    TOPICS.alerts,
+    TOPICS.intrusion,
+    TOPICS.lighting,
+    TOPICS.event,
+    TOPICS.door_time,
+    TOPICS.access_status,    // ← NUEVO: estados de puerta
+    TOPICS.fan_status,       // ← NUEVO: estados de ventilador
+    TOPICS.maintenance_status // ← NUEVO: estados de mantenimiento
+  ];
+  
+  client.subscribe(topicsToSubscribe);
+  console.log(`Suscrito a ${topicsToSubscribe.length} topics`);
+  console.log('Topics suscritos:', topicsToSubscribe);
 });
 
 client.on('message', async (topic, message) => {
@@ -242,28 +272,26 @@ client.on('message', async (topic, message) => {
       }
     }
 
-
-    if (topic === TOPICS.access) {
+    // Estados de puerta desde Raspberry
+    if (topic === TOPICS.access_status) {
       const msgUpper = msg.toUpperCase();
-
+      
       if (msgUpper === "OPEN" || msgUpper === "ON") {
         currentStatus.door = "OPEN";
+        console.log('[ESTADO] Puerta: OPEN (desde Raspberry)');
+        
+        // Solo crear evento si fue automático (para comandos manuales ya creamos evento)
+        // O puedes decidir siempre crear evento:
         await Event.create({
           type: 'door',
           message: 'Puerta ABIERTA',
           user: 'Raspberry'
         });
         
-        // Crear registro de apertura
-        await DoorOpening.create({
-          action: 'OPEN',
-          duration: 0, // Se actualizará cuando se cierre
-          timestamp: now,
-          user: 'Raspberry'
-        });
-        
       } else if (msgUpper === "CLOSED" || msgUpper === "OFF") {
         currentStatus.door = "CLOSED";
+        console.log('[ESTADO] Puerta: CLOSED (desde Raspberry)');
+        
         await Event.create({
           type: 'door',
           message: 'Puerta CERRADA',
@@ -272,34 +300,33 @@ client.on('message', async (topic, message) => {
       }
     }
 
-    if (topic === TOPICS.pir) {
-      await Event.create({ type: 'motion', message: 'Movimiento detectado' });
-      currentStatus.last_motion = now;  // <-- AGREGAR ESTO
-      console.log('Movimiento detectado y registrado');
-    }
-
-    if (topic === TOPICS.fan) {
+    // Estados de ventilador desde Raspberry
+    if (topic === TOPICS.fan_status) {
       const fanState = msg.toUpperCase();
       const previousState = currentStatus.fan;
       currentStatus.fan = fanState;
       
-      // Manejar activaciones/desactivaciones
+      console.log(`[ESTADO] Ventilador: ${fanState} (desde Raspberry)`);
+      
+      // Solo procesar cambios de estado
       if (fanState === 'ON' && previousState !== 'ON') {
-        // Nueva activación
+        // Determinar si es automático (temperatura ≥24) o manual
         const isAutomatic = currentStatus.temperature >= 24.0;
         currentStatus.fan_mode = isAutomatic ? 'automatic' : 'manual';
         
         await FanActivation.create({
-          mode: isAutomatic ? 'automatic' : 'manual',
+          mode: currentStatus.fan_mode,
           temperature: currentStatus.temperature,
           startTime: now
         });
         
+        // Crear evento (para estados automáticos, manuales ya tienen evento)
         await Event.create({
           type: 'fan',
-          message: `Ventilador ${isAutomatic ? 'activado automáticamente' : 'activado manualmente'}`,
-          user: isAutomatic ? 'System' : 'User'
+          message: `Ventilador ${isAutomatic ? 'activado automáticamente' : 'activado'}`,
+          user: isAutomatic ? 'System' : 'Raspberry'
         });
+        
       } else if (fanState === 'OFF' && previousState === 'ON') {
         // Desactivación
         const lastActivation = await FanActivation.findOne({ 
@@ -311,15 +338,39 @@ client.on('message', async (topic, message) => {
           lastActivation.duration = Math.floor((now - lastActivation.startTime) / 1000);
           await lastActivation.save();
         }
-
+        
         await Event.create({
           type: 'fan',
           message: 'Ventilador desactivado',
-          user: 'System'
+          user: 'Raspberry'
         });
       }
     }
 
+    // Estados de mantenimiento desde Raspberry
+    if (topic === TOPICS.maintenance_status) {
+      const isMaintenance = msg.toUpperCase() === 'ON';
+      currentStatus.maintenance = isMaintenance;
+      
+      console.log(`[ESTADO] Mantenimiento: ${isMaintenance ? 'ON' : 'OFF'} (desde Raspberry)`);
+      
+      await Event.create({
+        type: 'maintenance',
+        message: `Modo mantenimiento ${isMaintenance ? 'activado' : 'desactivado'}`,
+        user: 'System'
+      });
+      
+      // Actualizar estado del sistema
+      updateSystemStatus();
+    }
+
+    if (topic === TOPICS.pir) {
+      await Event.create({ type: 'motion', message: 'Movimiento detectado' });
+      currentStatus.last_motion = now;  // <-- AGREGAR ESTO
+      console.log('Movimiento detectado y registrado');
+    }
+
+    
     // Handler unificado para temp_alarm
     if (topic === TOPICS.temp_alarm) {
       if (msg === 'OFF' || msg === 'DESACTIVADO') {
@@ -414,21 +465,7 @@ client.on('message', async (topic, message) => {
         currentStatus.system_status = 'NORMAL';
       }
     }
-
-    // ACTUALIZAR: Handler para maintenance 
-    if (topic === TOPICS.maintenance) {
-      const isMaintenance = msg.toUpperCase() === 'ON';
-      currentStatus.maintenance = isMaintenance;
-      
-      await Event.create({
-        type: 'maintenance',
-        message: `Modo mantenimiento ${isMaintenance ? 'activado' : 'desactivado'}`,
-        user: 'System'
-      });
-      
-      // Actualizar estado del sistema
-      updateSystemStatus();
-    }
+  
 
     // ACTUALIZAR: Handler para alarmas - actualizar system_status
     if (topic === TOPICS.temp_alarm || topic === TOPICS.hum_alarm) {
@@ -946,8 +983,15 @@ app.post('/api/door', (req, res) => {
     });
   }
   
-  // Solo publicar MQTT, NO crear evento aquí
-  client.publish(TOPICS.access, mqttCmd, { qos: 1 });
+  // Publicar en topic de COMANDO (nuevo)
+  client.publish(TOPICS.access_command, mqttCmd, { qos: 1 });
+  
+  // Crear evento INMEDIATO (acción del usuario)
+  Event.create({
+    type: 'door',
+    message: `Puerta ${cmd === 'OPEN' ? 'abriendo' : 'cerrando'}`,
+    user: user
+  });
   
   res.json({ 
     success: true, 
@@ -956,18 +1000,37 @@ app.post('/api/door', (req, res) => {
   });
 });
 
-app.post('/api/maintenance/toggle', async (req, res) => {
-  const { enable, user = 'Web' } = req.body;
-  const cmd = enable ? 'ON' : 'OFF';
-  client.publish(TOPICS.maintenance, cmd, { qos: 1 });
-  res.json({ success: true, command: cmd });
-});
-
-
 app.post('/api/fan/toggle', (req, res) => {
   const { enable } = req.body;
   const cmd = enable ? 'ON' : 'OFF';
-  client.publish(TOPICS.fan, cmd, { qos: 1 });
+  
+  // Publicar en topic de COMANDO (nuevo)
+  client.publish(TOPICS.fan_command, cmd, { qos: 1 });
+  
+  // Crear evento INMEDIATO (acción del usuario)
+  Event.create({
+    type: 'fan',
+    message: `Ventilador ${enable ? 'encendido' : 'apagado'} manualmente`,
+    user: 'Web'
+  });
+  
+  res.json({ success: true, command: cmd });
+});
+
+app.post('/api/maintenance/toggle', async (req, res) => {
+  const { enable, user = 'Web' } = req.body;
+  const cmd = enable ? 'ON' : 'OFF';
+  
+  // Publicar en topic de COMANDO (nuevo)
+  client.publish(TOPICS.maintenance_command, cmd, { qos: 1 });
+  
+  // Crear evento INMEDIATO (acción del usuario)
+  await Event.create({
+    type: 'maintenance',
+    message: `Modo mantenimiento ${enable ? 'activado' : 'desactivado'}`,
+    user: user || 'Web'
+  });
+  
   res.json({ success: true, command: cmd });
 });
 
