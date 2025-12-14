@@ -49,9 +49,9 @@ TOPICS = {
 SERVO_PIN   = 12   # Servo para puerta
 FAN_PIN     = 15   # Relé o transistor para ventilador
 PIR_PIN     = 26   # Sensor de movimiento PIR
-DHT_PIN     = board.D18   # DHT11 (datos)
+DHT_PIN     = board.D13   # DHT11 (datos)
 
-BUZZER_PIN  = 14  # Buzzer para alarmas
+BUZZER_PIN  = 6  # Buzzer para alarmas
 
 #LED RGB 1
 LED_R_PIN   = 17   # LED RGB - Rojo
@@ -64,9 +64,9 @@ LED_WHITE_2 = 7    # LED blanco 2
 LED_WHITE_3 = 1   # LED blanco 3
 
 # PIN para LED de estado (5.7) - LED RGB 2
-LED_STATUS_R = 19   # LED de estado ROJO (separado o usar los existentes)
-LED_STATUS_G = 16   # LED de estado VERDE
-LED_STATUS_B = 20   # LED de estado AZUL
+LED_STATUS_R = 23   # LED de estado ROJO (separado o usar los existentes)
+LED_STATUS_G = 24   # LED de estado VERDE
+LED_STATUS_B = 5   # LED de estado AZUL
 
 # ====================== INICIALIZACIÓN LCD ======================
 lcd_available = False  # Definir aquí primero
@@ -134,7 +134,7 @@ GPIO.output(LED_STATUS_B, GPIO.LOW)
 
 # Sensor DHT11
 try:
-    dht_device = adafruit_dht.DHT11(board.D18)
+    dht_device = adafruit_dht.DHT11(board.D13)
     print("[OK] Sensor DHT11 inicializado")
 except Exception as e:
     print(f"[ERROR] Inicializando DHT11: {e}")
