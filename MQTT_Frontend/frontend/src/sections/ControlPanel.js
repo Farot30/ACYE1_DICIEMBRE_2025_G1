@@ -24,10 +24,12 @@ function ControlPanel({ username })  {
 
   const loadSystemStatus = async () => {
     try {
-      const status = await apiService.getStatus();
-      setDoorStatus(status.doorStatus);
-      setMaintenanceMode(status.maintenanceMode);
-      setFanStatus(status.fanStatus);
+      const status = await apiService.getSystemStatus();
+      
+      // CORREGIR EL MAPEO:
+      setDoorStatus(status.door.toLowerCase());  // "CLOSED" → "closed", "OPEN" → "open"
+      setMaintenanceMode(!!status.maintenance);  // boolean
+      setFanStatus(status.fan === "ON");         // "ON" → true, "OFF" → false
     } catch (error) {
       console.error('Error cargando estado del sistema:', error);
       addNotification('error', 'Error al cargar estado del sistema');

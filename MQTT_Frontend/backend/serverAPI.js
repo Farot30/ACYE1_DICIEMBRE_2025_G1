@@ -20,12 +20,47 @@ const ReadingSchema = new mongoose.Schema({
 const Reading = mongoose.model('Reading', ReadingSchema);
 
 const EventSchema = new mongoose.Schema({
-  type: String,      // 'door', 'fan', 'maintenance', 'motion', 'alert'
+  type: String,      // 'door', 'fan', 'maintenance', 'motion', 'alert', 'intrusion', 'lighting', 'system'
   message: String,
   user: String,
   timestamp: { type: Date, default: Date.now }
 });
 const Event = mongoose.model('Event', EventSchema);
+
+const AlarmSchema = new mongoose.Schema({
+  type: String,      // 'temperature' | 'humidity' | 'intrusion'
+  value: Number,
+  status: String,
+  startTime: { type: Date, default: Date.now },
+  endTime: Date,
+  duration: Number
+});
+const Alarm = mongoose.model('Alarm', AlarmSchema);
+
+const FanActivationSchema = new mongoose.Schema({
+  mode: String,      // 'automatic' | 'manual'
+  temperature: Number,
+  startTime: { type: Date, default: Date.now },
+  endTime: Date,
+  duration: Number
+});
+const FanActivation = mongoose.model('FanActivation', FanActivationSchema);
+
+// NUEVO MODELO: Door Opening (5.4)
+const DoorOpeningSchema = new mongoose.Schema({
+  action: String,    // 'OPEN' | 'CLOSED'
+  duration: Number,  // Tiempo que estuvo abierta (en segundos)
+  timestamp: { type: Date, default: Date.now },
+  user: String       // Quién realizó la acción
+});
+const DoorOpening = mongoose.model('DoorOpening', DoorOpeningSchema);
+
+// NUEVO MODELO: Lighting Event (5.6)
+const LightingEventSchema = new mongoose.Schema({
+  action: String,    // 'ON' | 'OFF'
+  timestamp: { type: Date, default: Date.now }
+});
+const LightingEvent = mongoose.model('LightingEvent', LightingEventSchema);
 
 //====================>MQTT<=================================================
 const client = mqtt.connect(process.env.MQTT_BROKER, {
@@ -40,13 +75,30 @@ const TOPICS = {
   access: '/fiusac/datacenter/access',
   pir: '/fiusac/datacenter/pir',
   fan: '/fiusac/datacenter/fan',
-  maintenance: '/fiusac/datacenter/maintenance'
+  maintenance: '/fiusac/datacenter/maintenance',
+  temp_alarm: '/fiusac/datacenter/temp_alarm',
+  hum_alarm: '/fiusac/datacenter/hum_alarm',
+  alerts: '/fiusac/datacenter/alerts',
+  intrusion:   '/fiusac/datacenter/intrusion',
+  lighting:    '/fiusac/datacenter/lighting',
+  event:       '/fiusac/datacenter/event',
+  door_time:   '/fiusac/datacenter/door_time'
 };
 
 let currentStatus = {
   door: 'CLOSED',
   fan: 'OFF',
-  maintenance: false
+  maintenance: false,
+  temperature: null,
+  humidity: null,
+  temperature_alarm: false,
+  humidity_alarm: false,
+  fan_mode: 'manual', // 'manual' o 'automatic'
+  intrusion_alarm: false,
+  lighting_on: false,
+  last_motion: null,
+  door_open_duration: 0,
+  system_status: 'NORMAL' // 'NORMAL', 'MAINTENANCE', 'ALARM'
 };
 
 client.on('connect', () => {
@@ -62,47 +114,352 @@ client.on('message', async (topic, message) => {
 
   try {
     if (topic === TOPICS.temperature) {
-      console.log(`Guardando temperatura: ${msg}`);  // Agrega esto también
-      await Reading.create({ type: 'temperature', value: parseFloat(msg) });
+      console.log(`Guardando temperatura: ${msg}`);
+      const tempValue = parseFloat(msg);
+      await Reading.create({ type: 'temperature', value: tempValue });
+      currentStatus.temperature = tempValue;  
     }
 
     if (topic === TOPICS.humidity) {
-      console.log(`Guardando humedad: ${msg}`);  // Agrega esto también
-      await Reading.create({ type: 'humidity', value: parseFloat(msg) });
+      console.log(`Guardando humedad: ${msg}`);
+      const humValue = parseFloat(msg);
+      await Reading.create({ type: 'humidity', value: humValue });
+      currentStatus.humidity = humValue; 
     }
 
+    // NUEVO: Manejar alarma de intrusión (5.5)
+    if (topic === TOPICS.intrusion) {
+      if (msg === 'ACTIVE') {
+        currentStatus.intrusion_alarm = true;
+        currentStatus.system_status = 'ALARM';
+        
+        await Alarm.create({
+          type: 'intrusion',
+          value: 1, // Valor binario para intrusión
+          status: 'active',
+          startTime: now
+        });
+        
+        await Event.create({
+          type: 'intrusion',
+          message: 'ALERTA CRITICA: Intrusión detectada con puerta cerrada',
+          user: 'System'
+        });
+        
+        console.log('Alarma de intrusión activada');
+        
+      } else if (msg === 'RESOLVED') {
+        currentStatus.intrusion_alarm = false;
+        // Solo cambiar a NORMAL si no hay otras alarmas
+        if (!currentStatus.temperature_alarm && !currentStatus.humidity_alarm) {
+          currentStatus.system_status = 'NORMAL';
+        }
+        
+        const activeAlarm = await Alarm.findOne({ 
+          type: 'intrusion', 
+          status: 'active' 
+        }).sort({ startTime: -1 });
+        
+        if (activeAlarm) {
+          activeAlarm.status = 'resolved';
+          activeAlarm.endTime = now;
+          activeAlarm.duration = Math.floor((now - activeAlarm.startTime) / 1000);
+          await activeAlarm.save();
+        }
+        
+        await Event.create({
+          type: 'intrusion',
+          message: 'Alarma de intrusión resuelta',
+          user: 'System'
+        });
+      }
+      updateSystemStatus()
+    }
+
+    // NUEVO: Manejar iluminación automática (5.6)
+    if (topic === TOPICS.lighting) {
+      if (msg === 'ON') {
+        currentStatus.lighting_on = true;
+        
+        await LightingEvent.create({
+          action: 'ON',
+          timestamp: now
+        });
+        
+        await Event.create({
+          type: 'lighting',
+          message: 'Iluminación automática activada',
+          user: 'System'
+        });
+        
+        console.log('Iluminación automática activada');
+        
+      } else if (msg === 'OFF') {
+        currentStatus.lighting_on = false;
+        
+        await LightingEvent.create({
+          action: 'OFF',
+          timestamp: now
+        });
+        
+        console.log('Iluminación automática desactivada');
+      }
+    }
+
+    // NUEVO: Manejar eventos generales (5.5)
+    if (topic === TOPICS.event) {
+      let eventType = 'system';
+      
+      if (msg.includes('PERSONAL TECNICO') || msg.includes('Trabajando')) {
+        eventType = 'motion';
+      } else if (msg.includes('MODO MANTENIMIENTO')) {
+        eventType = 'maintenance';
+      }
+      
+      await Event.create({
+        type: eventType,
+        message: msg,
+        user: 'System',
+        timestamp: now
+      });
+    }
+
+    // NUEVO: Manejar tiempo de puerta abierta (5.4)
+    if (topic === TOPICS.door_time) {
+      const duration = parseFloat(msg);
+      currentStatus.door_open_duration = duration;
+      
+      // Guardar en DoorOpening si la duración es mayor a 0
+      if (duration > 0) {
+        await DoorOpening.create({
+          action: 'OPEN',
+          duration: duration,
+          timestamp: now,
+          user: 'System'
+        });
+        
+        console.log(`Puerta estuvo abierta por ${duration} segundos`);
+      }
+    }
+
+
     if (topic === TOPICS.access) {
-        const msgUpper = msg.toUpperCase();
+      const msgUpper = msg.toUpperCase();
 
-        // Solo actualizamos el estado interno
-        if (msgUpper === "ON" || msgUpper === "OPEN") {
-            currentStatus.door = "OPEN";
-        } else if (msgUpper === "OFF" || msgUpper === "CLOSED") {
-            currentStatus.door = "CLOSED";
-        }
-
-        // Solo creamos evento si el mensaje viene de la Raspberry (confirmación física)
-        // y es "OPEN" o "CLOSED" → evita duplicados
-        if (msgUpper === "OPEN" || msgUpper === "CLOSED") {
-            await Event.create({
-                type: 'door',
-                message: `Puerta ${msgUpper}`,
-                user: 'Raspberry'
-            });
-        }
+      if (msgUpper === "OPEN" || msgUpper === "ON") {
+        currentStatus.door = "OPEN";
+        await Event.create({
+          type: 'door',
+          message: 'Puerta ABIERTA',
+          user: 'Raspberry'
+        });
+        
+        // Crear registro de apertura
+        await DoorOpening.create({
+          action: 'OPEN',
+          duration: 0, // Se actualizará cuando se cierre
+          timestamp: now,
+          user: 'Raspberry'
+        });
+        
+      } else if (msgUpper === "CLOSED" || msgUpper === "OFF") {
+        currentStatus.door = "CLOSED";
+        await Event.create({
+          type: 'door',
+          message: 'Puerta CERRADA',
+          user: 'Raspberry'
+        });
+      }
     }
 
     if (topic === TOPICS.pir) {
       await Event.create({ type: 'motion', message: 'Movimiento detectado' });
+      currentStatus.last_motion = now;  // <-- AGREGAR ESTO
+      console.log('Movimiento detectado y registrado');
     }
 
     if (topic === TOPICS.fan) {
-      currentStatus.fan = msg.toUpperCase();
+      const fanState = msg.toUpperCase();
+      const previousState = currentStatus.fan;
+      currentStatus.fan = fanState;
+      
+      // Manejar activaciones/desactivaciones
+      if (fanState === 'ON' && previousState !== 'ON') {
+        // Nueva activación
+        const isAutomatic = currentStatus.temperature >= 24.0;
+        currentStatus.fan_mode = isAutomatic ? 'automatic' : 'manual';
+        
+        await FanActivation.create({
+          mode: isAutomatic ? 'automatic' : 'manual',
+          temperature: currentStatus.temperature,
+          startTime: now
+        });
+        
+        await Event.create({
+          type: 'fan',
+          message: `Ventilador ${isAutomatic ? 'activado automáticamente' : 'activado manualmente'}`,
+          user: isAutomatic ? 'System' : 'User'
+        });
+      } else if (fanState === 'OFF' && previousState === 'ON') {
+        // Desactivación
+        const lastActivation = await FanActivation.findOne({ 
+          endTime: null 
+        }).sort({ startTime: -1 });
+        
+        if (lastActivation) {
+          lastActivation.endTime = now;
+          lastActivation.duration = Math.floor((now - lastActivation.startTime) / 1000);
+          await lastActivation.save();
+        }
+
+        await Event.create({
+          type: 'fan',
+          message: 'Ventilador desactivado',
+          user: 'System'
+        });
+      }
     }
 
-    if (topic === TOPICS.maintenance) {
-      currentStatus.maintenance = msg.toUpperCase() === 'ON';
+    // Handler unificado para temp_alarm
+    if (topic === TOPICS.temp_alarm) {
+      if (msg === 'OFF' || msg === 'DESACTIVADO') {
+        // Desactivar alarma
+        currentStatus.temperature_alarm = false;
+        
+        // Buscar y cerrar alarma activa
+        const activeAlarm = await Alarm.findOne({ 
+          type: 'temperature', 
+          status: 'active' 
+        }).sort({ startTime: -1 });
+        
+        if (activeAlarm) {
+          activeAlarm.status = 'resolved';
+          activeAlarm.endTime = now;
+          activeAlarm.duration = Math.floor((now - activeAlarm.startTime) / 1000);
+          await activeAlarm.save();
+        }
+        
+        await Event.create({
+          type: 'alert',
+          message: 'Alarma de temperatura desactivada',
+          user: 'System'
+        });
+        
+      } else {
+        // Activar alarma (msg es el valor numérico)
+        currentStatus.temperature_alarm = true;
+        const tempValue = parseFloat(msg);
+        currentStatus.temperature = tempValue;
+        
+        await Alarm.create({
+          type: 'temperature',
+          value: tempValue,
+          status: 'active',
+          startTime: now
+        });
+        
+        await Event.create({
+          type: 'alert',
+          message: `ALERTA: Temperatura crítica ${tempValue}°C`,
+          user: 'System'
+        });
+      }
+      updateSystemStatus()
     }
+
+
+    // NUEVO: Manejar alarmas de humedad
+    // Handler similar para hum_alarm
+    if (topic === TOPICS.hum_alarm) {
+      if (msg === 'OFF' || msg === 'DESACTIVADO') {
+        // Desactivar alarma
+        currentStatus.humidity_alarm = false;
+        
+        const activeAlarm = await Alarm.findOne({ 
+          type: 'humidity', 
+          status: 'active' 
+        }).sort({ startTime: -1 });
+        
+        if (activeAlarm) {
+          activeAlarm.status = 'resolved';
+          activeAlarm.endTime = now;
+          activeAlarm.duration = Math.floor((now - activeAlarm.startTime) / 1000);
+          await activeAlarm.save();
+        }
+        
+      } else {
+        // Activar alarma
+        currentStatus.humidity_alarm = true;
+        const humValue = parseFloat(msg);
+        currentStatus.humidity = humValue;
+        
+        await Alarm.create({
+          type: 'humidity',
+          value: humValue,
+          status: 'active',
+          startTime: now
+        });
+      }
+      updateSystemStatus()
+    }
+
+    function updateSystemStatus() {
+      if (currentStatus.intrusion_alarm || 
+          currentStatus.temperature_alarm || 
+          currentStatus.humidity_alarm) {
+        currentStatus.system_status = 'ALARM';
+      } else if (currentStatus.maintenance) {
+        currentStatus.system_status = 'MAINTENANCE';
+      } else {
+        currentStatus.system_status = 'NORMAL';
+      }
+    }
+
+    // ACTUALIZAR: Handler para maintenance 
+    if (topic === TOPICS.maintenance) {
+      const isMaintenance = msg.toUpperCase() === 'ON';
+      currentStatus.maintenance = isMaintenance;
+      
+      await Event.create({
+        type: 'maintenance',
+        message: `Modo mantenimiento ${isMaintenance ? 'activado' : 'desactivado'}`,
+        user: 'System'
+      });
+      
+      // Actualizar estado del sistema
+      updateSystemStatus();
+    }
+
+    // ACTUALIZAR: Handler para alarmas - actualizar system_status
+    if (topic === TOPICS.temp_alarm || topic === TOPICS.hum_alarm) {
+      currentStatus.system_status = 'ALARM';
+      updateSystemStatus()
+    }
+    
+    if (topic === TOPICS.temp_alarm_off || topic === TOPICS.hum_alarm_off) {
+      // Solo cambiar a NORMAL si no hay otras alarmas
+      if (!currentStatus.temperature_alarm && !currentStatus.humidity_alarm && !currentStatus.intrusion_alarm) {
+        currentStatus.system_status = currentStatus.maintenance ? 'MAINTENANCE' : 'NORMAL';
+      }
+    }
+
+    // NUEVO: Alertas generales
+    if (topic === TOPICS.alerts) {
+      let alertType = 'alert';
+      
+      // Clasificar alertas basado en contenido
+      if (msg.includes('Temperatura')) alertType = 'temperature_alert';
+      else if (msg.includes('Humedad')) alertType = 'humidity_alert';
+      else if (msg.includes('Intrusión')) alertType = 'intrusion_alert';
+      
+      await Event.create({
+        type: alertType,
+        message: msg,
+        user: 'System',
+        timestamp: now
+      });
+    }
+
   } catch (e) {
     console.error('Error procesando mensaje MQTT:', e);
   }
@@ -161,12 +518,422 @@ app.get('/api/stats', (req, res) => {
 app.get('/api/status', (req, res) => res.json({ status: 'OK' }));
 app.get('/api/health', (req, res) => res.json({ status: 'OK', mqtt: client.connected }));
 
-// POSTs - Control (¡OJO A ESTAS DOS RUTAS!)
-app.post('/api/door', (req, res) => {                    //Otto USA    /api/door
+// GET: Obtener estado completo del sistema (ACTUALIZADA)
+app.get('/api/system/status', (req, res) => {
+  res.json({
+    door: currentStatus.door,
+    fan: currentStatus.fan,
+    maintenance: currentStatus.maintenance,
+    temperature: currentStatus.temperature,
+    humidity: currentStatus.humidity,
+    temperature_alarm: currentStatus.temperature_alarm,
+    humidity_alarm: currentStatus.humidity_alarm,
+    intrusion_alarm: currentStatus.intrusion_alarm,
+    lighting_on: currentStatus.lighting_on,
+    fan_mode: currentStatus.fan_mode,
+    door_open_duration: currentStatus.door_open_duration,
+    system_status: currentStatus.system_status,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// GET: Obtener alarmas activas
+app.get('/api/alarms/active', async (req, res) => {
+  try {
+    const activeAlarms = await Alarm.find({ status: 'active' }).sort({ startTime: -1 });
+    res.json(activeAlarms);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET: Obtener historial de alarmas
+app.get('/api/alarms/history', async (req, res) => {
+  const { type, startDate, endDate, limit = 50 } = req.query;
+  const query = { status: 'resolved' };
+  
+  if (type) query.type = type;
+  if (startDate) query.startTime = { ...query.startTime, $gte: new Date(startDate) };
+  if (endDate) query.startTime = { ...query.startTime, $lte: new Date(endDate) };
+  
+  try {
+    const alarms = await Alarm.find(query)
+      .sort({ startTime: -1 })
+      .limit(parseInt(limit));
+    res.json(alarms);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET: Obtener activaciones del ventilador
+app.get('/api/fan/activations', async (req, res) => {
+  const { mode, startDate, endDate, limit = 50 } = req.query;
+  const query = {};
+  
+  if (mode) query.mode = mode;
+  if (startDate) query.startTime = { ...query.startTime, $gte: new Date(startDate) };
+  if (endDate) query.startTime = { ...query.startTime, $lte: new Date(endDate) };
+  
+  try {
+    const activations = await FanActivation.find(query)
+      .sort({ startTime: -1 })
+      .limit(parseInt(limit));
+    res.json(activations);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST: Forzar apagado de alarma (emergencia)
+app.post('/api/alarms/force-reset', async (req, res) => {
+  const { type, user = 'Admin' } = req.body;
+  
+  try {
+    // Publicar comando MQTT para apagar alarma en Raspberry
+    if (type === 'temperature') {
+      client.publish(TOPICS.temp_alarm, 'OFF', { qos: 1 });  // ← CORREGIDO!
+      currentStatus.temperature_alarm = false;
+    } else if (type === 'humidity') {
+      client.publish(TOPICS.hum_alarm, 'OFF', { qos: 1 });   // ← CORREGIDO!
+      currentStatus.humidity_alarm = false;
+    } else if (type === 'intrusion') {
+      client.publish(TOPICS.intrusion, 'RESOLVED', { qos: 1 });
+      currentStatus.intrusion_alarm = false;
+    }
+    
+    updateSystemStatus(); 
+
+    await Event.create({
+      type: 'alert',
+      message: `Alarma ${type} desactivada manualmente por ${user}`,
+      user
+    });
+    
+    res.json({ success: true, message: `Alarma ${type} desactivada manualmente` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET: Métricas del día
+app.get('/api/metrics/today', async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const temperatureReadings = await Reading.find({
+      type: 'temperature',
+      timestamp: { $gte: today, $lt: tomorrow }
+    }).sort({ timestamp: 1 });
+    
+    const humidityReadings = await Reading.find({
+      type: 'humidity',
+      timestamp: { $gte: today, $lt: tomorrow }
+    }).sort({ timestamp: 1 });
+    
+    const todayAlarms = await Alarm.find({
+      startTime: { $gte: today, $lt: tomorrow }
+    });
+    
+    const metrics = {
+      temperature: {
+        count: temperatureReadings.length,
+        max: temperatureReadings.length > 0 ? Math.max(...temperatureReadings.map(r => r.value)) : null,
+        min: temperatureReadings.length > 0 ? Math.min(...temperatureReadings.map(r => r.value)) : null,
+        avg: temperatureReadings.length > 0 ? 
+          temperatureReadings.reduce((sum, r) => sum + r.value, 0) / temperatureReadings.length : null
+      },
+      humidity: {
+        count: humidityReadings.length,
+        max: humidityReadings.length > 0 ? Math.max(...humidityReadings.map(r => r.value)) : null,
+        min: humidityReadings.length > 0 ? Math.min(...humidityReadings.map(r => r.value)) : null,
+        avg: humidityReadings.length > 0 ? 
+          humidityReadings.reduce((sum, r) => sum + r.value, 0) / humidityReadings.length : null
+      },
+      alarms: {
+        temperature: todayAlarms.filter(a => a.type === 'temperature').length,
+        humidity: todayAlarms.filter(a => a.type === 'humidity').length,
+        total: todayAlarms.length
+      }
+    };
+    
+    res.json(metrics);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ====================== NUEVAS RUTAS API (5.4-5.8) ======================
+
+// GET: Obtener estado completo extendido
+app.get('/api/system/status/extended', (req, res) => {
+  res.json({
+    door: currentStatus.door,
+    fan: currentStatus.fan,
+    maintenance: currentStatus.maintenance,
+    temperature: currentStatus.temperature,
+    humidity: currentStatus.humidity,
+    temperature_alarm: currentStatus.temperature_alarm,
+    humidity_alarm: currentStatus.humidity_alarm,
+    intrusion_alarm: currentStatus.intrusion_alarm,
+    lighting_on: currentStatus.lighting_on,
+    fan_mode: currentStatus.fan_mode,
+    door_open_duration: currentStatus.door_open_duration,
+    system_status: currentStatus.system_status,
+    last_motion: currentStatus.last_motion,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// GET: Obtener historial de aperturas de puerta (5.4)
+app.get('/api/door/history', async (req, res) => {
+  const { startDate, endDate, limit = 50 } = req.query;
+  const query = {};
+  
+  if (startDate) query.timestamp = { ...query.timestamp, $gte: new Date(startDate) };
+  if (endDate) query.timestamp = { ...query.timestamp, $lte: new Date(endDate) };
+  
+  try {
+    const history = await DoorOpening.find(query)
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit));
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET: Obtener estadísticas de puerta (5.4)
+app.get('/api/door/stats', async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const todayOpenings = await DoorOpening.find({
+      timestamp: { $gte: today, $lt: tomorrow },
+      action: 'OPEN'
+    });
+    
+    const stats = {
+      total_openings_today: todayOpenings.length,
+      avg_duration_today: todayOpenings.length > 0 ? 
+        todayOpenings.reduce((sum, o) => sum + o.duration, 0) / todayOpenings.length : 0,
+      max_duration_today: todayOpenings.length > 0 ? 
+        Math.max(...todayOpenings.map(o => o.duration)) : 0,
+      total_duration_today: todayOpenings.reduce((sum, o) => sum + o.duration, 0)
+    };
+    
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET: Obtener historial de iluminación (5.6)
+app.get('/api/lighting/history', async (req, res) => {
+  const { startDate, endDate, limit = 50 } = req.query;
+  const query = {};
+  
+  if (startDate) query.timestamp = { ...query.timestamp, $gte: new Date(startDate) };
+  if (endDate) query.timestamp = { ...query.timestamp, $lte: new Date(endDate) };
+  
+  try {
+    const history = await LightingEvent.find(query)
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit));
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET: Obtener eventos de movimiento (5.5)
+app.get('/api/motion/events', async (req, res) => {
+  const { startDate, endDate, limit = 50 } = req.query;
+  const query = { type: 'motion' };
+  
+  if (startDate) query.timestamp = { ...query.timestamp, $gte: new Date(startDate) };
+  if (endDate) query.timestamp = { ...query.timestamp, $lte: new Date(endDate) };
+  
+  try {
+    const events = await Event.find(query)
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit));
+    res.json(events);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET: Obtener eventos de intrusión (5.5)
+app.get('/api/intrusion/events', async (req, res) => {
+  const { startDate, endDate, limit = 50 } = req.query;
+  const query = { type: 'intrusion' };
+  
+  if (startDate) query.timestamp = { ...query.timestamp, $gte: new Date(startDate) };
+  if (endDate) query.timestamp = { ...query.timestamp, $lte: new Date(endDate) };
+  
+  try {
+    const events = await Event.find(query)
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit));
+    res.json(events);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST: Desactivar alarma de intrusión manualmente
+app.post('/api/intrusion/force-reset', async (req, res) => {
+  const { user = 'Admin' } = req.body;
+  
+  try {
+    // Publicar comando MQTT para apagar alarma en Raspberry
+    client.publish(TOPICS.intrusion, 'RESOLVED', { qos: 1 });
+    currentStatus.intrusion_alarm = false;
+    
+    // Actualizar system_status si no hay otras alarmas
+    if (!currentStatus.temperature_alarm && !currentStatus.humidity_alarm) {
+      currentStatus.system_status = currentStatus.maintenance ? 'MAINTENANCE' : 'NORMAL';
+    }
+    
+    await Event.create({
+      type: 'intrusion',
+      message: 'Alarma de intrusión desactivada manualmente',
+      user
+    });
+    
+    res.json({ success: true, message: 'Alarma de intrusión desactivada manualmente' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET: Métricas extendidas del día
+app.get('/api/metrics/today/extended', async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    // Métricas existentes
+    const temperatureReadings = await Reading.find({
+      type: 'temperature',
+      timestamp: { $gte: today, $lt: tomorrow }
+    }).sort({ timestamp: 1 });
+    
+    const humidityReadings = await Reading.find({
+      type: 'humidity',
+      timestamp: { $gte: today, $lt: tomorrow }
+    }).sort({ timestamp: 1 });
+    
+    const todayAlarms = await Alarm.find({
+      startTime: { $gte: today, $lt: tomorrow }
+    });
+    
+    // Nuevas métricas (5.4-5.8)
+    const doorOpenings = await DoorOpening.find({
+      timestamp: { $gte: today, $lt: tomorrow },
+      action: 'OPEN'
+    });
+    
+    const lightingEvents = await LightingEvent.find({
+      timestamp: { $gte: today, $lt: tomorrow }
+    });
+    
+    const motionEvents = await Event.find({
+      type: 'motion',
+      timestamp: { $gte: today, $lt: tomorrow }
+    });
+    
+    const metrics = {
+      temperature: {
+        count: temperatureReadings.length,
+        max: temperatureReadings.length > 0 ? Math.max(...temperatureReadings.map(r => r.value)) : null,
+        min: temperatureReadings.length > 0 ? Math.min(...temperatureReadings.map(r => r.value)) : null,
+        avg: temperatureReadings.length > 0 ? 
+          temperatureReadings.reduce((sum, r) => sum + r.value, 0) / temperatureReadings.length : null
+      },
+      humidity: {
+        count: humidityReadings.length,
+        max: humidityReadings.length > 0 ? Math.max(...humidityReadings.map(r => r.value)) : null,
+        min: humidityReadings.length > 0 ? Math.min(...humidityReadings.map(r => r.value)) : null,
+        avg: humidityReadings.length > 0 ? 
+          humidityReadings.reduce((sum, r) => sum + r.value, 0) / humidityReadings.length : null
+      },
+      alarms: {
+        temperature: todayAlarms.filter(a => a.type === 'temperature').length,
+        humidity: todayAlarms.filter(a => a.type === 'humidity').length,
+        intrusion: todayAlarms.filter(a => a.type === 'intrusion').length,
+        total: todayAlarms.length
+      },
+      // Nuevas métricas
+      door: {
+        openings: doorOpenings.length,
+        avg_duration: doorOpenings.length > 0 ? 
+          doorOpenings.reduce((sum, o) => sum + o.duration, 0) / doorOpenings.length : 0,
+        total_time_open: doorOpenings.reduce((sum, o) => sum + o.duration, 0)
+      },
+      lighting: {
+        activations: lightingEvents.filter(e => e.action === 'ON').length,
+        total_time: lightingEvents.length > 0 ? 'Calculado por eventos' : 0
+      },
+      security: {
+        motion_detections: motionEvents.length,
+        intrusions: todayAlarms.filter(a => a.type === 'intrusion').length
+      }
+    };
+    
+    res.json(metrics);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST: Control manual de iluminación (opcional)
+app.post('/api/lighting/control', async (req, res) => {
   const { action, user = 'Web' } = req.body;
   const cmd = action.toUpperCase();
   
-  // CONVERTIR: El frontend envía "OPEN"/"CLOSE" pero Raspberry espera "ON"/"OFF"
+  if (cmd !== 'ON' && cmd !== 'OFF') {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Comando inválido. Use: ON u OFF' 
+    });
+  }
+  
+  // Nota: Esto es opcional, ya que la iluminación es automática
+  // Pero podrías enviar un comando MQTT si quisieras control manual
+  // client.publish(TOPICS.lighting, cmd, { qos: 1 });
+  
+  await Event.create({
+    type: 'lighting',
+    message: `Iluminación ${cmd === 'ON' ? 'activada' : 'desactivada'} manualmente`,
+    user
+  });
+  
+  res.json({ 
+    success: true, 
+    action: cmd,
+    message: `Comando de iluminación: ${cmd}` 
+  });
+});
+
+
+// POSTs - Control (¡OJO A ESTAS DOS RUTAS!)
+app.post('/api/door', (req, res) => {
+  const { action, user = 'Web' } = req.body;
+  const cmd = action.toUpperCase();
+  
   let mqttCmd;
   if (cmd === 'OPEN' || cmd === 'ON') {
     mqttCmd = 'ON';
@@ -175,22 +942,17 @@ app.post('/api/door', (req, res) => {                    //Otto USA    /api/door
   } else {
     return res.status(400).json({ 
       success: false, 
-      error: 'Comando inválido. Use: OPEN, CLOSE, ON u OFF' 
+      error: 'Comando inválido' 
     });
   }
   
+  // Solo publicar MQTT, NO crear evento aquí
   client.publish(TOPICS.access, mqttCmd, { qos: 1 });
-  Event.create({ 
-    type: 'door', 
-    message: `Puerta ${cmd === 'OPEN' ? 'abriendo' : 'cerrando'}`, 
-    user 
-  });
   
   res.json({ 
     success: true, 
     action: cmd,
-    mqttCommand: mqttCmd,
-    message: `Comando enviado a Raspberry: ${mqttCmd}` 
+    message: `Comando enviado: ${mqttCmd}` 
   });
 });
 
@@ -198,24 +960,18 @@ app.post('/api/maintenance/toggle', async (req, res) => {
   const { enable, user = 'Web' } = req.body;
   const cmd = enable ? 'ON' : 'OFF';
   client.publish(TOPICS.maintenance, cmd, { qos: 1 });
-  await Event.create({ 
-    type: 'maintenance', 
-    message: `Mantenimiento ${enable ? 'activado' : 'desactivado'}`, 
-    user: user || 'Web' 
-  });
   res.json({ success: true, command: cmd });
 });
+
 
 app.post('/api/fan/toggle', (req, res) => {
   const { enable } = req.body;
   const cmd = enable ? 'ON' : 'OFF';
   client.publish(TOPICS.fan, cmd, { qos: 1 });
-  Event.create({ 
-    type: 'fan', 
-    message: `Ventilador ${enable ? 'encendido' : 'apagado'}` 
-  });
   res.json({ success: true, command: cmd });
 });
+
+
 
 //INICIAR
 app.listen(port, () => {

@@ -223,8 +223,8 @@ last_sensor_time = 0
 try:
     while True:
         current_time = time.time()
-        # Leer DHT11 cada 10 segundos
-        if current_time - last_sensor_time >= 10:
+        # Leer DHT11 cada 30 segundos
+        if current_time - last_sensor_time >= 30:
             if dht_device:
                 try:
                     temperature = dht_device.temperature

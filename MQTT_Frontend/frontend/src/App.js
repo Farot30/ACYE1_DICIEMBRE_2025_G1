@@ -105,20 +105,6 @@ function App() {
         }));
       }
 
-      // Cargar estadísticas (para el estado actual del sistema)
-      const statsData = await apiService.getStats();
-      console.log('📊 Stats recibidas:', statsData);
-      
-      if (statsData) {
-        // Actualizar estado del sistema con datos reales
-        setSystemData(prev => ({
-          ...prev,
-          doorStatus: statsData.doorStatus === 'OPEN' ? 'open' : 'closed',
-          fanStatus: statsData.fanStatus === 'ON',
-          maintenanceMode: statsData.maintenanceMode
-        }));
-      }
-
       // Cargar datos históricos de temperatura y humedad
       const tempData = await apiService.getTemperature();
       const humidityData = await apiService.getHumidity();
@@ -249,18 +235,18 @@ function App() {
         
         setHistoricalData(combined);
         
-        // Actualizar temperatura y humedad en tiempo real (última lectura)
+        // Actualizar temperatura y humedad en tiempo real desde la última lectura disponible
         if (tempData.length > 0) {
           setSystemData(prev => ({
             ...prev,
-            temperature: Math.round(tempData[0].value) || 0
+            temperature: Math.round(tempData[0].value)
           }));
         }
         
         if (humidityData.length > 0) {
           setSystemData(prev => ({
             ...prev,
-            humidity: Math.round(humidityData[0].value) || 0
+            humidity: Math.round(humidityData[0].value)
           }));
         }
         
@@ -333,25 +319,24 @@ function App() {
 
   const fetchSystemStatus = async () => {
     try {
-      // Obtener últimas lecturas de temperatura y humedad
-      const tempData = await apiService.getTemperature();
-      const humidityData = await apiService.getHumidity();
-      const statsData = await apiService.getStats();
+      // Usa la nueva ruta que devuelve TODO el estado del sistema
+      const statusData = await apiService.getSystemStatus(); // o getSystemStatusExtended() si quieres más datos
       
-      setSystemData(prev => ({
-        ...prev,
-        temperature: (Array.isArray(tempData) && tempData.length > 0) 
-          ? Math.round(tempData[0].value) 
-          : prev.temperature,
-        humidity: (Array.isArray(humidityData) && humidityData.length > 0) 
-          ? Math.round(humidityData[0].value) 
-          : prev.humidity,
-        doorStatus: statsData?.doorStatus === 'OPEN' ? 'open' : 'closed',
-        fanStatus: statsData?.fanStatus === 'ON',
-        maintenanceMode: statsData?.maintenanceMode || false,
-        activeAlerts: 0,
-        systemStatus: 'normal'
-      }));
+      console.log('Estado del sistema recibido:', statusData);
+
+      setSystemData({
+        temperature: statusData.temperature !== null ? Math.round(statusData.temperature) : 0,
+        humidity: statusData.humidity !== null ? Math.round(statusData.humidity) : 0,
+        doorStatus: statusData.door === 'OPEN' ? 'open' : 'closed',
+        fanStatus: statusData.fan === 'ON',
+        maintenanceMode: statusData.maintenance || false,
+        activeAlerts: 
+          (statusData.temperature_alarm ? 1 : 0) +
+          (statusData.humidity_alarm ? 1 : 0) +
+          (statusData.intrusion_alarm ? 1 : 0),
+        systemStatus: statusData.system_status.toLowerCase() // 'NORMAL', 'MAINTENANCE', 'ALARM'
+      });
+
     } catch (error) {
       console.error('Error al obtener estado del sistema:', error);
     }
