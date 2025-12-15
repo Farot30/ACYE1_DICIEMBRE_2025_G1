@@ -72,9 +72,9 @@ LED_G_PIN   = 27   # LED RGB - Verde
 LED_B_PIN   = 22   # LED RGB - Azul
 
 #NUEVOS PINES PARA 5.6 (LEDs blancos de iluminación)
-LED_WHITE_1 = 8    # LED blanco 1
-LED_WHITE_2 = 7    # LED blanco 2
-LED_WHITE_3 = 1   # LED blanco 3
+LED_WHITE_1 = 16    # LED blanco 1
+LED_WHITE_2 = 20    # LED blanco 2
+LED_WHITE_3 = 21   # LED blanco 3
 
 # PIN para LED de estado (5.7) - LED RGB 2
 LED_STATUS_R = 5  # LED de estado ROJO (separado o usar los existentes)
@@ -179,6 +179,10 @@ modo_lcd_actual = 0  # 0: temp/hum, 1: estado puerta, 2: movimiento, 3: alarmas,
 ultimo_cambio_lcd = 0
 INTERVALO_CAMBIO_LCD = 5  # segundos entre cambios
 
+last_valid_temp = None
+last_valid_hum = None
+dht_consecutive_errors = 0
+MAX_DHT_ERRORS = 5  # Máximo de errores consecutivos antes de alertar
 
 # ====================== CONTROL LCD ======================
 def actualizar_lcd_rotativo():
@@ -284,18 +288,16 @@ def abrir_puerta(is_manual_command=True):
         duty = 12.5  # ~180 grados
         servo_pwm.ChangeDutyCycle(duty)
         time.sleep(0.5)
-        servo_pwm.ChangeDutyCycle(2.5)
+        # Mantener el duty de abierto para que el servo no regrese automáticamente
         puerta_abierta = True
         tiempo_puerta_abierta = time.time()
         print("[FISICO] Puerta ABIERTA")
-        
         # Publicar estado MQTT SOLO si no es comando manual
         if not is_manual_command:
             try:
                 client.publish(TOPICS_STATUS["access"], "OPEN", qos=1)  # ← USAR STATUS
             except:
                 pass
-        
         # Actualizar LCD
         if lcd_available:
             try:
@@ -304,7 +306,6 @@ def abrir_puerta(is_manual_command=True):
                 time.sleep(1)
             except:
                 pass
-        
     except Exception as e:
         print(f"[ERROR] Abriendo puerta: {e}")
 
@@ -314,30 +315,25 @@ def cerrar_puerta(is_manual_command=True):
         duty = 2.5   # ~0 grados
         servo_pwm.ChangeDutyCycle(duty)
         time.sleep(0.5)
-        servo_pwm.ChangeDutyCycle(2.5)
-        
+        # Mantener el duty de cerrado para que el servo no regrese automáticamente
         # Calcular tiempo que estuvo abierta
         tiempo_abierta = 0
         if puerta_abierta and tiempo_puerta_abierta > 0:
             tiempo_abierta = time.time() - tiempo_puerta_abierta
             print(f"[INFO] Puerta estuvo abierta por {tiempo_abierta:.1f} segundos")
-            
             # PUBLICAR TIEMPO VÍA MQTT (SIEMPRE, es dato nuevo)
             try:
                 client.publish(TOPICS["door_time"], f"{tiempo_abierta:.1f}", qos=1)  # ← OK (está en TOPICS)
             except:
                 pass
-        
         puerta_abierta = False
         print("[FISICO] Puerta CERRADA")
-        
         # Publicar estado MQTT SOLO si no es comando manual
         if not is_manual_command:
             try:
                 client.publish(TOPICS_STATUS["access"], "CLOSED", qos=1)  # ← USAR STATUS
             except:
                 pass
-        
         # Actualizar LCD
         if lcd_available:
             try:
@@ -346,7 +342,6 @@ def cerrar_puerta(is_manual_command=True):
                 time.sleep(1)
             except:
                 pass
-        
         # Si hay alarma de intrusión activa, desactivarla
         if alarma_intrusion:
             desactivar_alarma_intrusion()
@@ -657,17 +652,33 @@ def on_message(client, userdata, msg):
                 print("  -> Ejecutando: CERRAR PUERTA")
                 cerrar_puerta(is_manual_command=True)  # ← OK, pasando parámetro
 
-        elif msg.topic == TOPICS_COMMAND["fan"]:
+        elif msg.topic == TOPICS_COMMAND["maintenance"]:
             if comando == "ON":
-                print("  -> Ejecutando: ENCENDER VENTILADOR (MANUAL)")
-                encender_ventilador(is_manual_command=True)  # ← OK, pasando parámetro
-                ventilador_auto = False
-                ventilador_control_manual = True
+                mantenimiento_on = True
+                print("  -> MODO MANTENIMIENTO ACTIVADO")
             elif comando == "OFF":
-                print("  -> Ejecutando: APAGAR VENTILADOR (MANUAL)")
-                apagar_ventilador(is_manual_command=True)  # ← OK, pasando parámetro
-                ventilador_auto = False
+                mantenimiento_on = False
+                print("  -> MODO MANTENIMIENTO DESACTIVADO")
+        elif msg.topic == TOPICS_COMMAND["fan"]:
+            # Control manual del ventilador desde backend
+            if comando == "ON":
+                print("  -> Ejecutando: ENCENDER VENTILADOR")
                 ventilador_control_manual = True
+                encender_ventilador(is_manual_command=True)
+                # Publicar estado para que el backend registre cambio
+                try:
+                    client.publish(TOPICS_STATUS["fan"], "ON", qos=1)
+                except Exception as e:
+                    print(f"[WARN] No se pudo publicar estado fan ON: {e}")
+            elif comando == "OFF":
+                print("  -> Ejecutando: APAGAR VENTILADOR")
+                apagar_ventilador(is_manual_command=True)
+                ventilador_control_manual = False  # Permitir que el control automático vuelva a funcionar
+                # Publicar estado para que el backend registre cambio
+                try:
+                    client.publish(TOPICS_STATUS["fan"], "OFF", qos=1)
+                except Exception as e:
+                    print(f"[WARN] No se pudo publicar estado fan OFF: {e}")
         # ...
     except Exception as e:
         print(f"[ERROR] Procesando mensaje: {e}")
@@ -677,10 +688,9 @@ def on_disconnect(client, userdata, rc, properties=None):
         print(f"[WARNING] Desconectado del broker. Codigo: {rc}")
         
 # Y configurarlo:
-client.on_disconnect = on_disconnect
+#client.on_disconnect = on_disconnect
 
 # ====================== CLIENTE MQTT ======================
-# Usar API VERSION 2
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"raspberry-pi-{int(time.time())}")
 client.username_pw_set(username, password)
 
@@ -688,25 +698,23 @@ client.username_pw_set(username, password)
 client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
 client.tls_insecure_set(False)
 
-# Configurar callbacks
-client.on_connect = on_connect
-client.on_message = on_message
-client.on_disconnect = on_disconnect
+# Configurar callbacks (¡aquí sí ya existe client!)
+client.on_connect    = on_connect
+client.on_message    = on_message
+client.on_disconnect = on_disconnect   # ← Mueve esta línea aquí
 
 # Configurar reconexión automática
 client.reconnect_delay_set(min_delay=1, max_delay=60)
 
 print(f"\nConectando a {broker}:{port}...")
-
 try:
     client.connect(broker, port, keepalive=60)
     client.loop_start()
     print("  Esperando conexion...")
-    time.sleep(3)  # Esperar conexión inicial
+    time.sleep(3)
 except Exception as e:
     print(f"[ERROR] Conectando: {e}")
     exit(1)
-
 # ====================== BUCLE PRINCIPAL ======================
 print("\n" + "="*60)
 print("RASPBERRY PI INICIADA")
@@ -725,57 +733,115 @@ try:
         manejar_alarmas_visuales_y_sonoras()
 
         # Leer DHT11 cada 30 segundos
-        if current_time - last_sensor_time >= 30:
+        if current_time - last_sensor_time >= 10:
             if dht_device:
                 try:
                     temperature = dht_device.temperature
                     humidity = dht_device.humidity
 
                     if temperature is not None and humidity is not None:
+                        #  Lecturas válidas - actualizar valores
+                        last_valid_temp = temperature
+                        last_valid_hum = humidity
+                        dht_consecutive_errors = 0  # Resetear contador de errores
+                        
                         # Publicar temperatura y humedad
                         client.publish(TOPICS["temperature"], f"{temperature:.1f}", qos=1)
                         client.publish(TOPICS["humidity"], f"{humidity:.1f}", qos=1)
                         print(f"[DHT11] Temperatura: {temperature:.1f}C, Humedad: {humidity:.1f}%")
                         
+                    else:
+                        # Lectura None - usar últimos valores válidos
+                        dht_consecutive_errors += 1
+                        print(f"[DHT11] Lectura None (error #{dht_consecutive_errors}), usando últimos valores válidos")
                         
-                        # CONDICIONAL 5.1: Control automático del ventilador
-                        if temperature >= 24.0 and not ventilador_on and not ventilador_control_manual:
-                            print("[AUTO] Temperatura ≥24°C - Activando ventilador automáticamente")
-                            encender_ventilador(is_manual_command=False)  # ← NO es comando manual
-                            ventilador_auto = True
+                        if last_valid_temp is not None and last_valid_hum is not None:
+                            temperature = last_valid_temp
+                            humidity = last_valid_hum
+                            print(f"[DHT11] Usando valores previos: T={temperature:.1f}C, H={humidity:.1f}%")
+                        else:
+                            print("[DHT11] No hay valores válidos previos, esperando siguiente lectura...")
+                            last_sensor_time = current_time
+                            continue  # Saltar este ciclo
+                    
+                    #  CONTROL AUTOMÁTICO VENTILADOR (solo si tenemos valores válidos)
+                    if temperature is not None:
+                        if not ventilador_control_manual:
+                            if temperature >= 27.0 and not ventilador_on:
+                                print("[AUTO] Temperatura >= 27°C - Activando ventilador automáticamente")
+                                encender_ventilador(is_manual_command=False)
+                                ventilador_auto = True
+                            elif temperature < 27.0 and ventilador_on and ventilador_auto:
+                                print("[AUTO] Temperatura < 27°C - Apagando ventilador automático")
+                                apagar_ventilador(is_manual_command=False)
+                                ventilador_auto = False
                         
-                        elif temperature < 24.0 and ventilador_auto and not ventilador_control_manual:
-                            print("[AUTO] Temperatura <24°C - Apagando ventilador automático")
-                            apagar_ventilador(is_manual_command=False)  # ← NO es comando manual
-                            ventilador_auto = False
-                        
-                        # CONDICIONAL 5.2: Alarma de temperatura crítica
-                        if temperature >= 28.0 and not alarma_temperatura:
+                        # ALARMA DE TEMPERATURA CRÍTICA
+                        if temperature >= 30.0 and not alarma_temperatura:
                             activar_alarma_temperatura(temperature)
                             client.publish(TOPICS["temp_alarm"], f"{temperature:.1f}", qos=1)
-                        
-                        elif temperature < 28.0 and alarma_temperatura:
+                        elif temperature < 30.0 and alarma_temperatura:
                             desactivar_alarma_temperatura()
                             client.publish(TOPICS["temp_alarm"], "OFF", qos=1)
-                        
-                        if humidity >= 94.0 and not alarma_humedad:
+                    
+                    #ALARMA DE HUMEDAD
+                    if humidity is not None:
+                        if humidity >= 70.0 and not alarma_humedad:
                             activar_alarma_humedad(humidity)
                             client.publish(TOPICS["hum_alarm"], f"{humidity:.1f}", qos=1)
-                        
-                        elif humidity < 94.0 and alarma_humedad:
+                        elif humidity < 70.0 and alarma_humedad:
                             desactivar_alarma_humedad()
                             client.publish(TOPICS["hum_alarm"], "OFF", qos=1)
+                    
+                    # Alertar si hay muchos errores consecutivos
+                    if dht_consecutive_errors >= MAX_DHT_ERRORS:
+                        print(f"[WARNING] DHT11 ha fallado {dht_consecutive_errors} veces consecutivas")
+                        if lcd_available:
+                            try:
+                                lcd.clear()
+                                lcd.text("ALERTA SENSOR DHT11", 1)
+                                lcd.text(f"Errores: {dht_consecutive_errors}", 2)
+                                lcd.text("Verificar cableado", 3)
+                                time.sleep(2)
+                            except:
+                                pass
                             
                 except RuntimeError as error:
-                    print(f"[DHT11] Error de lectura: {error.args[0]}")
-                    # Mostrar error en LCD
-                    if lcd_available:
+                    dht_consecutive_errors += 1
+                    print(f"[DHT11] Error de lectura: {error.args[0]} (error consecutivo #{dht_consecutive_errors})")
+                    
+                    #  USAR ÚLTIMOS VALORES VÁLIDOS SI EXISTEN
+                    if last_valid_temp is not None and last_valid_hum is not None:
+                        temperature = last_valid_temp
+                        humidity = last_valid_hum
+                        print(f"[DHT11] Usando valores previos: T={temperature:.1f}C, H={humidity:.1f}%")
+                        
+                        # Continuar con lógica de control usando valores previos
+                        if not ventilador_control_manual:
+                            if temperature >= 27.0 and not ventilador_on:
+                                print("[AUTO] Temperatura >= 27°C - Activando ventilador (usando valor previo)")
+                                encender_ventilador(is_manual_command=False)
+                                ventilador_auto = True
+                            elif temperature < 27.0 and ventilador_on and ventilador_auto:
+                                print("[AUTO] Temperatura < 27°C - Apagando ventilador (usando valor previo)")
+                                apagar_ventilador(is_manual_command=False)
+                                ventilador_auto = False
+                    else:
+                        print("[DHT11] No hay valores válidos previos para usar")
+                    
+                    # Mostrar error en LCD si hay muchos errores
+                    if dht_consecutive_errors >= MAX_DHT_ERRORS and lcd_available:
                         try:
-                            lcd.text("Error sensor DHT11", 2)
+                            lcd.clear()
+                            lcd.text("ERROR SENSOR DHT11", 1)
+                            lcd.text("Checksum invalido", 2)
+                            lcd.text("Revisar conexiones", 3)
+                            time.sleep(2)
                         except:
                             pass
+                        
                 except Exception as error:
-                    print(f"[DHT11] Error: {error}")
+                    print(f"[DHT11] Error inesperado: {error}")
             
             last_sensor_time = current_time
         
@@ -788,10 +854,7 @@ try:
                 
                     # Guardar última detección
                     ultima_deteccion_pir = tiempo_actual
-
-                    tiempo_ultima_deteccion = tiempo_actual
-                    
-                    # 5.6: Encender iluminación automática
+                    # 5.6: Encender iluminación automática (esta función actualiza tiempo_ultima_deteccion)
                     encender_iluminacion()
                     
                     if tiempo_actual - last_pir_time > 5:
