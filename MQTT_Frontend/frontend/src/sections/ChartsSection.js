@@ -80,9 +80,7 @@ function ChartsSection({ historicalData, eventsByType, events }) {
     <div className="section-content-wrapper">
       <div className="section-header-main">
         <h2 className="section-title-main">Gráficas Históricas</h2>
-        <span className="date-range">
-          {hasData ? `${historicalData.length} lecturas` : 'Sin datos'}
-        </span>
+
       </div>
 
       {!hasData && (
@@ -100,7 +98,7 @@ function ChartsSection({ historicalData, eventsByType, events }) {
 
       {/* Gráfica de líneas - Temperatura */}
       <div className="chart-card">
-        <h3 className="chart-title">Temperatura (°C) - {tempValues.length} lecturas</h3>
+        <h3 className="chart-title">Temperatura (°C)</h3>
         <div className="line-chart-container">
           <div className="y-axis">
             <span className="y-label">50°</span>
@@ -140,7 +138,7 @@ function ChartsSection({ historicalData, eventsByType, events }) {
                         key={index}
                         cx={x}
                         cy={y}
-                        r="2"
+                        r="1"
                         className="temp-point"
                         fill="#ef4444"
                       >
@@ -171,7 +169,7 @@ function ChartsSection({ historicalData, eventsByType, events }) {
 
       {/* Gráfica de líneas - Humedad */}
       <div className="chart-card">
-        <h3 className="chart-title">Humedad (%) - {humidityValues.length} lecturas</h3>
+        <h3 className="chart-title">Humedad (%)</h3>
         <div className="line-chart-container">
           <div className="y-axis">
             <span className="y-label">100%</span>
@@ -211,7 +209,7 @@ function ChartsSection({ historicalData, eventsByType, events }) {
                         key={index}
                         cx={x}
                         cy={y}
-                        r="2"
+                        r="1"
                         className="humidity-point"
                         fill="#3b82f6"
                       >

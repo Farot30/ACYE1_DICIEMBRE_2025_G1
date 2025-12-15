@@ -75,6 +75,44 @@ function App() {
     }
   }, [isAuthenticated]);
 
+  const simplifyData = (data, maxPoints) => {
+    if (data.length <= maxPoints) return data;
+    
+    const simplified = [];
+    const step = Math.floor(data.length / maxPoints);
+    
+    // Algoritmo: Largest Triangle Three Buckets (simplificado)
+    // Mantiene primer y último punto, y selecciona puntos representativos
+    
+    simplified.push(data[0]); // Primer punto siempre
+    
+    for (let i = 1; i < maxPoints - 1; i++) {
+      const avgIndex = Math.floor(i * step);
+      
+      // Tomar el punto con mayor variación en su rango
+      const rangeStart = avgIndex - Math.floor(step / 2);
+      const rangeEnd = avgIndex + Math.floor(step / 2);
+      
+      let maxVariation = -1;
+      let selectedPoint = data[avgIndex];
+      
+      for (let j = Math.max(0, rangeStart); j < Math.min(data.length, rangeEnd); j++) {
+        const variation = Math.abs(data[j].temp - data[avgIndex].temp) + 
+                          Math.abs(data[j].humidity - data[avgIndex].humidity);
+        
+        if (variation > maxVariation) {
+          maxVariation = variation;
+          selectedPoint = data[j];
+        }
+      }
+      
+      simplified.push(selectedPoint);
+    }
+    
+    simplified.push(data[data.length - 1]); // Último punto siempre
+    
+    return simplified;
+  };
 
   // Cargar datos desde el backend
   const loadInitialData = async () => {
@@ -125,7 +163,7 @@ function App() {
               type: 'Temperatura Alta',
               date: new Date(reading.timestamp).toISOString().split('T')[0],
               time: new Date(reading.timestamp).toLocaleTimeString('es-GT'),
-              temp: Math.round(reading.value),
+              temp: Math.round(reading.value), // 🔥 AQUÍ: Usar el valor real, no 0
               description: `Temperatura crítica detectada: ${Math.round(reading.value)}°C (umbral: ${TEMP_THRESHOLD}°C)`,
               timestamp: reading.timestamp
             });
@@ -137,12 +175,17 @@ function App() {
       if (Array.isArray(humidityData) && humidityData.length > 0) {
         humidityData.forEach(reading => {
           if (reading.value > HUMIDITY_THRESHOLD) {
+            // Buscar la temperatura correspondiente al mismo timestamp
+            const correspondingTemp = tempData.find(t => 
+              Math.abs(new Date(t.timestamp).getTime() - new Date(reading.timestamp).getTime()) < 2000
+            );
+            
             formattedEvents.push({
               id: `hum-${reading._id}`,
               type: 'Humedad Alta',
               date: new Date(reading.timestamp).toISOString().split('T')[0],
               time: new Date(reading.timestamp).toLocaleTimeString('es-GT'),
-              temp: 0,
+              temp: correspondingTemp ? Math.round(correspondingTemp.value) : 0, // 🔥 Temperatura del momento
               description: `Humedad elevada detectada: ${Math.round(reading.value)}% (umbral: ${HUMIDITY_THRESHOLD}%)`,
               timestamp: reading.timestamp
             });
@@ -229,11 +272,26 @@ function App() {
           }
         });
         
-        // Ya no limitamos a 30 puntos - mostramos TODOS los de los últimos 3 días
-        console.log('📊 Datos combinados (últimos 3 días):', combined.length, 'puntos');
-        console.log('📊 Muestra de datos:', combined.slice(0, 3));
+        // **SIMPLIFICAR DATOS SI HAY DEMASIADOS PUNTOS**
+        let finalData = combined;
+        const MAX_POINTS = 150; // Máximo de puntos a mostrar en gráfica
         
-        setHistoricalData(combined);
+        if (combined.length > MAX_POINTS) {
+          console.log(`📉 Simplificando datos: ${combined.length} → ${MAX_POINTS} puntos`);
+          
+          // Algoritmo de muestreo: mantener puntos clave
+          finalData = simplifyData(combined, MAX_POINTS);
+          
+          console.log(`✅ Datos simplificados: ${finalData.length} puntos`);
+        } else {
+          console.log(`✅ No es necesario simplificar: ${combined.length} puntos`);
+        }
+        
+        // Ya no limitamos a 30 puntos - mostramos TODOS los de los últimos 3 días (o simplificados)
+        console.log('📊 Datos combinados (últimos 3 días):', finalData.length, 'puntos');
+        console.log('📊 Muestra de datos:', finalData.slice(0, 3));
+        
+        setHistoricalData(finalData);
         
         // Actualizar temperatura y humedad en tiempo real desde la última lectura disponible
         if (tempData.length > 0) {
@@ -255,6 +313,8 @@ function App() {
         const maxTemp = temps.length > 0 ? Math.max(...temps) : 0;
         const minTemp = temps.length > 0 ? Math.min(...temps) : 0;
         
+        const doorStats = await apiService.getDoorStats();
+
         setDailyStats({
           maxTemp: Math.round(maxTemp),
           minTemp: Math.round(minTemp),
@@ -262,7 +322,7 @@ function App() {
             e.type === 'Temperatura Alta' || e.type === 'Humedad Alta'
           ).length,
           totalAccess: formattedEvents.filter(e => e.type === 'Acceso').length,
-          avgDoorOpenTime: '0m 0s'
+          avgDoorOpenTime: doorStats.avg_duration_formatted || '0m 0s' // <- REAL de MongoDB
         });
 
         // **CALCULAR RESUMEN DE LOS ÚLTIMOS 3 DÍAS**
