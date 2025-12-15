@@ -36,7 +36,7 @@ Control de iluminación mediante LED RGB para señalización visual.
 - **Voltaje:** 3.3V - 5V
 - **Pines:** R (Rojo), G (Verde), B (Azul)
 
-![Conexión con LED RGB](image/Led_RGB.png)
+![Conexión con LED RGB](image/Iluminacion_Automatica.png)
 
 ---
 
@@ -76,9 +76,35 @@ Sensor digital de temperatura y humedad ambiente.
 - **Precisión:** ±2°C, ±5% HR
 - **Protocolo:** Single-wire serial
 
-![Conexión con Sensor DHT11](image/DHT11.png)
+![Conexión con Sensor DHT11](image/dht11.png)
+
 
 ---
+
+### 6. Buzzer
+
+Sensor digital de temperatura y humedad ambiente.
+
+**Especificaciones:**   
+-- **Frecuencia de Trabajo:** 100Hz a 10KHz   
+-- **Corriente de Consumo:**  30 mA (aproximada)   
+-- **Impedancia:** 16Ω
+
+![Conexión con Sensor DHT11](image/buzzer.png)
+
+### 7. Buzzer
+
+Sensor digital de temperatura y humedad ambiente.
+
+**Especificaciones:**   
+-- **Voltaje de operación:** 3.3V ~ 5V DC    
+-- **Corriente de operación:**  >15 mA    
+-- **Distancia de prueba:** 1 mm a 25 mm    
+-- **Tipo:** TCRT50   
+-- **Chip:** LM393    
+-- **Dimensiones:** 3.2 x 1.4 cm
+
+![Conexión con Sensor DHT11](image/infrarrojo.png)
 
 ## 📚 Referencias
 
