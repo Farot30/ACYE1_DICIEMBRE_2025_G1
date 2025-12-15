@@ -135,7 +135,12 @@ function App() {
                 event.type === 'motion' ? 'Intrusión' : 
                 event.type === 'fan' ? 'Ventilador' : 
                 event.type === 'maintenance' ? 'Mantenimiento' : event.type,
-          date: new Date(event.timestamp).toISOString().split('T')[0],
+          date: new Date(new Date(event.timestamp).getTime())
+          .toLocaleDateString('es-GT', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          }).split('/').reverse().join('-'),
           time: new Date(event.timestamp).toLocaleTimeString('es-GT'),
           temp: 0,
           user: event.user || 'Sistema',
@@ -165,7 +170,12 @@ function App() {
             formattedEvents.push({
               id: `temp-${reading._id}`,
               type: 'Temperatura Alta',
-              date: new Date(reading.timestamp).toISOString().split('T')[0],
+              date: new Date(new Date(reading.timestamp).getTime())
+              .toLocaleDateString('es-GT', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+              }).split('/').reverse().join('-'),
               time: new Date(reading.timestamp).toLocaleTimeString('es-GT'),
               temp: Math.round(reading.value), // 🔥 AQUÍ: Usar el valor real, no 0
               description: `Temperatura crítica detectada: ${Math.round(reading.value)}°C (umbral: ${TEMP_THRESHOLD}°C)`,
@@ -187,7 +197,12 @@ function App() {
             formattedEvents.push({
               id: `hum-${reading._id}`,
               type: 'Humedad Alta',
-              date: new Date(reading.timestamp).toISOString().split('T')[0],
+             date: new Date(new Date(reading.timestamp).getTime())
+              .toLocaleDateString('es-GT', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+              }).split('/').reverse().join('-'),
               time: new Date(reading.timestamp).toLocaleTimeString('es-GT'),
               temp: correspondingTemp ? Math.round(correspondingTemp.value) : 0, // 🔥 Temperatura del momento
               description: `Humedad elevada detectada: ${Math.round(reading.value)}% (umbral: ${HUMIDITY_THRESHOLD}%)`,
