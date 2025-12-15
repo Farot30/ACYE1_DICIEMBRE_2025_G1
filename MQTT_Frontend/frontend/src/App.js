@@ -138,7 +138,11 @@ function App() {
           date: new Date(event.timestamp).toISOString().split('T')[0],
           time: new Date(event.timestamp).toLocaleTimeString('es-GT'),
           temp: 0,
-          description: event.message || 'Sin descripción',
+          user: event.user || 'Sistema',
+          // Agregar usuario al final de la descripción si existe
+          description: event.user 
+            ? `${event.message || 'Sin descripción'} (${event.user})`
+            : (event.message || 'Sin descripción'),
           timestamp: event.timestamp
         }));
       }

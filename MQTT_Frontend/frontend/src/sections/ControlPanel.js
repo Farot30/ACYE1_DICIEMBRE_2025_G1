@@ -51,9 +51,9 @@ function ControlPanel({ username })  {
       const newStatus = doorStatus === 'closed' ? 'open' : 'closed';
       
       if (newStatus === 'open') {
-        await apiService.openDoor(username || 'Usuario Web');
+        await apiService.openDoor(username || 'Usuario fiusac_datacenter');
       } else {
-        await apiService.closeDoor(username || 'Usuario Web');
+        await apiService.closeDoor(username || 'Usuario fiusac_datacenter');
       }
       
       setDoorStatus(newStatus);
@@ -70,7 +70,7 @@ function ControlPanel({ username })  {
     
     try {
       const newMode = !maintenanceMode;
-      await apiService.toggleMaintenance(newMode, username || 'Usuario Web');
+      await apiService.toggleMaintenance(newMode, username || 'Usuario fiusac_datacenter');
       
       setMaintenanceMode(newMode);
       addNotification('success', `Modo mantenimiento ${newMode ? 'activado' : 'desactivado'}`);

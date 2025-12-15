@@ -755,16 +755,21 @@ app.get('/api/door/stats', async (req, res) => {
     
     const todayOpenings = await DoorOpening.find({
       timestamp: { $gte: today, $lt: tomorrow },
-      action: 'OPEN'
+      duration: { $exists: true, $gt: 0 } // Solo registros con duración válida
     });
+    
+    const avgSeconds = todayOpenings.length > 0 ? 
+      todayOpenings.reduce((sum, o) => sum + o.duration, 0) / todayOpenings.length : 0;
+    
+    // Formatear solo en segundos
+    const formattedAvg = `${Math.round(avgSeconds)}s`;
     
     const stats = {
       total_openings_today: todayOpenings.length,
-      avg_duration_today: todayOpenings.length > 0 ? 
-        todayOpenings.reduce((sum, o) => sum + o.duration, 0) / todayOpenings.length : 0,
+      avg_duration_seconds: Math.round(avgSeconds),
+      avg_duration_formatted: formattedAvg, // <- "25s", "3s", etc.
       max_duration_today: todayOpenings.length > 0 ? 
-        Math.max(...todayOpenings.map(o => o.duration)) : 0,
-      total_duration_today: todayOpenings.reduce((sum, o) => sum + o.duration, 0)
+        Math.max(...todayOpenings.map(o => o.duration)) : 0
     };
     
     res.json(stats);
@@ -938,7 +943,7 @@ app.get('/api/metrics/today/extended', async (req, res) => {
 
 // POST: Control manual de iluminación (opcional)
 app.post('/api/lighting/control', async (req, res) => {
-  const { action, user = 'Web' } = req.body;
+  const { action, user = 'fiusac_datacenter' } = req.body;
   const cmd = action.toUpperCase();
   
   if (cmd !== 'ON' && cmd !== 'OFF') {
@@ -968,7 +973,7 @@ app.post('/api/lighting/control', async (req, res) => {
 
 // POSTs - Control (¡OJO A ESTAS DOS RUTAS!)
 app.post('/api/door', (req, res) => {
-  const { action, user = 'Web' } = req.body;
+  const { action, user = 'fiusac_datacenter' } = req.body;
   const cmd = action.toUpperCase();
   
   let mqttCmd;
@@ -1011,14 +1016,14 @@ app.post('/api/fan/toggle', (req, res) => {
   Event.create({
     type: 'fan',
     message: `Ventilador ${enable ? 'encendido' : 'apagado'} manualmente`,
-    user: 'Web'
+    user: 'fiusac_datacenter'
   });
   
   res.json({ success: true, command: cmd });
 });
 
 app.post('/api/maintenance/toggle', async (req, res) => {
-  const { enable, user = 'Web' } = req.body;
+  const { enable, user = 'fiusac_datacenter' } = req.body;
   const cmd = enable ? 'ON' : 'OFF';
   
   // Publicar en topic de COMANDO (nuevo)
@@ -1028,7 +1033,7 @@ app.post('/api/maintenance/toggle', async (req, res) => {
   await Event.create({
     type: 'maintenance',
     message: `Modo mantenimiento ${enable ? 'activado' : 'desactivado'}`,
-    user: user || 'Web'
+    user: user || 'fiusac_datacenter'
   });
   
   res.json({ success: true, command: cmd });
