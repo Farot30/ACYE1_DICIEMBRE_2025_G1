@@ -356,8 +356,8 @@ client.on('message', async (topic, message) => {
       
       await Event.create({
         type: 'maintenance',
-        message: `Modo mantenimiento ${isMaintenance ? 'activado' : 'desactivado'}`,
-        user: 'System'
+        message: `Modo mantenimiento ${isMaintenance ? 'activado:' : 'desactivado'}`,
+        user: 'fiusac_datacenter'
       });
       
       // Actualizar estado del sistema
