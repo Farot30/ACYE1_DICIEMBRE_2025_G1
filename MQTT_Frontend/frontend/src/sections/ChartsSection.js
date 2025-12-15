@@ -248,7 +248,7 @@ function ChartsSection({ historicalData, eventsByType, events }) {
               <div className="bar-container">
                 <div 
                   className="bar-fill" 
-                  style={{width: `${(event.count / 42) * 100}%`}}
+                  style={{width: `${(event.count / 200) * 100}%`}}
                 >
                   <span className="bar-value">{event.count}</span>
                 </div>

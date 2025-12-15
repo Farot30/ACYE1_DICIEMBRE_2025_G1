@@ -177,7 +177,7 @@ function App() {
                 day: '2-digit'
               }).split('/').reverse().join('-'),
               time: new Date(reading.timestamp).toLocaleTimeString('es-GT'),
-              temp: Math.round(reading.value), // 🔥 AQUÍ: Usar el valor real, no 0
+              temp: Math.round(reading.value),
               description: `Temperatura crítica detectada: ${Math.round(reading.value)}°C (umbral: ${TEMP_THRESHOLD}°C)`,
               timestamp: reading.timestamp
             });
@@ -214,9 +214,20 @@ function App() {
       
       // Ordenar todos los eventos por timestamp (más reciente primero)
       formattedEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      
+      const tempHighEvents = formattedEvents.filter(e => e.type === 'Temperatura Alta');
+      const humidityHighEvents = formattedEvents.filter(e => e.type === 'Humedad Alta');
+      const otherEvents = formattedEvents.filter(e => 
+        e.type !== 'Temperatura Alta' && e.type !== 'Humedad Alta'
+      );
+
+      // Limitar eventos normales a 60, pero TODOS los de alerta
+      const limitedOtherEvents = otherEvents.slice(0, 60);
       // Limitar a los últimos 100 eventos
-      formattedEvents = formattedEvents.slice(0, 100);
+      formattedEvents = [
+        ...tempHighEvents,
+        ...humidityHighEvents,
+        ...limitedOtherEvents
+      ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
       
       setEvents(formattedEvents);
       
