@@ -147,7 +147,7 @@ GPIO.output(LED_STATUS_B, GPIO.LOW)
 
 # Sensor DHT11
 try:
-    dht_device = adafruit_dht.DHT11(board.D13)
+    dht_device = adafruit_dht.DHT11(board.D13, use_pulseio=False)
     print("[OK] Sensor DHT11 inicializado")
 except Exception as e:
     print(f"[ERROR] Inicializando DHT11: {e}")
@@ -732,117 +732,126 @@ try:
         current_time = time.time()
         manejar_alarmas_visuales_y_sonoras()
 
-        # Leer DHT11 cada 30 segundos
-        if current_time - last_sensor_time >= 10:
+        # Leer DHT11 cada 30 segundos (más estable y recomendado para DHT11)
+        if current_time - last_sensor_time >= 30:
             if dht_device:
-                try:
-                    temperature = dht_device.temperature
-                    humidity = dht_device.humidity
+                temperature = None
+                humidity = None
+                lectura_valida = False
 
-                    if temperature is not None and humidity is not None:
-                        #  Lecturas válidas - actualizar valores
-                        last_valid_temp = temperature
-                        last_valid_hum = humidity
-                        dht_consecutive_errors = 0  # Resetear contador de errores
-                        
-                        # Publicar temperatura y humedad
-                        client.publish(TOPICS["temperature"], f"{temperature:.1f}", qos=1)
-                        client.publish(TOPICS["humidity"], f"{humidity:.1f}", qos=1)
-                        print(f"[DHT11] Temperatura: {temperature:.1f}C, Humedad: {humidity:.1f}%")
-                        
-                    else:
-                        # Lectura None - usar últimos valores válidos
-                        dht_consecutive_errors += 1
-                        print(f"[DHT11] Lectura None (error #{dht_consecutive_errors}), usando últimos valores válidos")
-                        
-                        if last_valid_temp is not None and last_valid_hum is not None:
-                            temperature = last_valid_temp
-                            humidity = last_valid_hum
-                            print(f"[DHT11] Usando valores previos: T={temperature:.1f}C, H={humidity:.1f}%")
+                # Intentar hasta 3 veces con delay entre intentos
+                for attempt in range(3):
+                    try:
+                        temperature = dht_device.temperature
+                        humidity = dht_device.humidity
+
+                        if temperature is not None and humidity is not None:
+                            # ¡Lectura exitosa!
+                            last_valid_temp = temperature
+                            last_valid_hum = humidity
+                            dht_consecutive_errors = 0  # Resetear errores consecutivos
+                            lectura_valida = True
+                            print(f"[DHT11] Lectura exitosa (intento {attempt + 1}): T={temperature:.1f}°C, H={humidity:.1f}%")
+                            break  # Salir del loop de reintentos
                         else:
-                            print("[DHT11] No hay valores válidos previos, esperando siguiente lectura...")
-                            last_sensor_time = current_time
-                            continue  # Saltar este ciclo
-                    
-                    #  CONTROL AUTOMÁTICO VENTILADOR (solo si tenemos valores válidos)
-                    if temperature is not None:
-                        if not ventilador_control_manual:
-                            if temperature >= 27.0 and not ventilador_on:
-                                print("[AUTO] Temperatura >= 27°C - Activando ventilador automáticamente")
-                                encender_ventilador(is_manual_command=False)
-                                ventilador_auto = True
-                            elif temperature < 27.0 and ventilador_on and ventilador_auto:
-                                print("[AUTO] Temperatura < 27°C - Apagando ventilador automático")
-                                apagar_ventilador(is_manual_command=False)
-                                ventilador_auto = False
-                        
-                        # ALARMA DE TEMPERATURA CRÍTICA
-                        if temperature >= 30.0 and not alarma_temperatura:
-                            activar_alarma_temperatura(temperature)
-                            client.publish(TOPICS["temp_alarm"], f"{temperature:.1f}", qos=1)
-                        elif temperature < 30.0 and alarma_temperatura:
-                            desactivar_alarma_temperatura()
-                            client.publish(TOPICS["temp_alarm"], "OFF", qos=1)
-                    
-                    #ALARMA DE HUMEDAD
-                    if humidity is not None:
-                        if humidity >= 70.0 and not alarma_humedad:
-                            activar_alarma_humedad(humidity)
-                            client.publish(TOPICS["hum_alarm"], f"{humidity:.1f}", qos=1)
-                        elif humidity < 70.0 and alarma_humedad:
-                            desactivar_alarma_humedad()
-                            client.publish(TOPICS["hum_alarm"], "OFF", qos=1)
-                    
-                    # Alertar si hay muchos errores consecutivos
-                    if dht_consecutive_errors >= MAX_DHT_ERRORS:
-                        print(f"[WARNING] DHT11 ha fallado {dht_consecutive_errors} veces consecutivas")
-                        if lcd_available:
-                            try:
-                                lcd.clear()
-                                lcd.text("ALERTA SENSOR DHT11", 1)
-                                lcd.text(f"Errores: {dht_consecutive_errors}", 2)
-                                lcd.text("Verificar cableado", 3)
-                                time.sleep(2)
-                            except:
-                                pass
-                            
-                except RuntimeError as error:
+                            print(f"[DHT11] Lectura devolvió None (intento {attempt + 1}), reintentando...")
+                    except RuntimeError as error:
+                        print(f"[DHT11] Error RuntimeError (intento {attempt + 1}): {error.args[0]}")
+                    except Exception as error:
+                        print(f"[DHT11] Error inesperado (intento {attempt + 1}): {error}")
+
+                    # Pequeño delay antes del siguiente intento (DHT11 necesita al menos 1-2s entre lecturas)
+                    if attempt < 2:  # No dormir en el último intento
+                        time.sleep(1.5)
+
+                # Después de los 3 intentos: decidir qué usar
+                if lectura_valida:
+                    # Usar la lectura fresca
+                    pass  # temperature y humidity ya son válidos
+                else:
+                    # Fallaron todos los intentos → usar valores previos si existen
                     dht_consecutive_errors += 1
-                    print(f"[DHT11] Error de lectura: {error.args[0]} (error consecutivo #{dht_consecutive_errors})")
-                    
-                    #  USAR ÚLTIMOS VALORES VÁLIDOS SI EXISTEN
+                    print(f"[DHT11] Fallaron los 3 intentos (error consecutivo #{dht_consecutive_errors}), usando últimos valores válidos")
+
                     if last_valid_temp is not None and last_valid_hum is not None:
                         temperature = last_valid_temp
                         humidity = last_valid_hum
-                        print(f"[DHT11] Usando valores previos: T={temperature:.1f}C, H={humidity:.1f}%")
-                        
-                        # Continuar con lógica de control usando valores previos
-                        if not ventilador_control_manual:
-                            if temperature >= 27.0 and not ventilador_on:
-                                print("[AUTO] Temperatura >= 27°C - Activando ventilador (usando valor previo)")
-                                encender_ventilador(is_manual_command=False)
-                                ventilador_auto = True
-                            elif temperature < 27.0 and ventilador_on and ventilador_auto:
-                                print("[AUTO] Temperatura < 27°C - Apagando ventilador (usando valor previo)")
-                                apagar_ventilador(is_manual_command=False)
-                                ventilador_auto = False
+                        print(f"[DHT11] Usando valores previos: T={temperature:.1f}°C, H={humidity:.1f}%")
                     else:
-                        print("[DHT11] No hay valores válidos previos para usar")
-                    
-                    # Mostrar error en LCD si hay muchos errores
-                    if dht_consecutive_errors >= MAX_DHT_ERRORS and lcd_available:
+                        print("[DHT11] No hay valores válidos previos → saltando control y publicación esta vez")
+                        last_sensor_time = current_time
+                        # Alertar errores consecutivos si es necesario
+                        if dht_consecutive_errors >= MAX_DHT_ERRORS and lcd_available:
+                            try:
+                                lcd.clear()
+                                lcd.text("ERROR SENSOR DHT11", 1)
+                                lcd.text(f"Errores: {dht_consecutive_errors}", 2)
+                                lcd.text("Revisar conexiones", 3)
+                                time.sleep(2)
+                            except:
+                                pass
+                        continue  # Saltar el resto del bloque (no publicar ni controlar)
+
+                # === Publicar en MQTT solo si tenemos valores (nuevos o previos válidos) ===
+                try:
+                    client.publish(TOPICS["temperature"], f"{temperature:.1f}", qos=1)
+                    client.publish(TOPICS["humidity"], f"{humidity:.1f}", qos=1)
+                except Exception as e:
+                    print(f"[MQTT] Error publicando DHT11: {e}")
+
+                # === CONTROL AUTOMÁTICO DEL VENTILADOR ===
+                if temperature is not None and not ventilador_control_manual:
+                    if temperature >= 27.0 and not ventilador_on:
+                        print("[AUTO] Temperatura >= 27°C - Activando ventilador automáticamente")
+                        encender_ventilador(is_manual_command=False)
+                        ventilador_auto = True
+                    elif temperature < 27.0 and ventilador_on and ventilador_auto:
+                        print("[AUTO] Temperatura < 27°C - Apagando ventilador automático")
+                        apagar_ventilador(is_manual_command=False)
+                        ventilador_auto = False
+
+                # === ALARMA DE TEMPERATURA CRÍTICA ===
+                if temperature is not None:
+                    if temperature >= 30.0 and not alarma_temperatura:
+                        activar_alarma_temperatura(temperature)
                         try:
-                            lcd.clear()
-                            lcd.text("ERROR SENSOR DHT11", 1)
-                            lcd.text("Checksum invalido", 2)
-                            lcd.text("Revisar conexiones", 3)
-                            time.sleep(2)
+                            client.publish(TOPICS["temp_alarm"], f"{temperature:.1f}", qos=1)
                         except:
                             pass
-                        
-                except Exception as error:
-                    print(f"[DHT11] Error inesperado: {error}")
-            
+                    elif temperature < 30.0 and alarma_temperatura:
+                        desactivar_alarma_temperatura()
+                        try:
+                            client.publish(TOPICS["temp_alarm"], "OFF", qos=1)
+                        except:
+                            pass
+
+                # === ALARMA DE HUMEDAD ===
+                if humidity is not None:
+                    if humidity >= 80.0 and not alarma_humedad:
+                        activar_alarma_humedad(humidity)
+                        try:
+                            client.publish(TOPICS["hum_alarm"], f"{humidity:.1f}", qos=1)
+                        except:
+                            pass
+                    elif humidity < 80.0 and alarma_humedad:
+                        desactivar_alarma_humedad()
+                        try:
+                            client.publish(TOPICS["hum_alarm"], "OFF", qos=1)
+                        except:
+                            pass
+
+                # === Alerta en LCD por muchos errores consecutivos ===
+                if dht_consecutive_errors >= MAX_DHT_ERRORS and lcd_available:
+                    try:
+                        lcd.clear()
+                        lcd.text("ALERTA SENSOR DHT11", 1)
+                        lcd.text(f"Errores: {dht_consecutive_errors}", 2)
+                        lcd.text("Verificar cableado", 3)
+                        time.sleep(2)
+                    except:
+                        pass
+
+            # Actualizar tiempo de última lectura (siempre, para mantener intervalo)
             last_sensor_time = current_time
         
         # Leer PIR - Sistema de Seguridad e Intrusión (5.5)
