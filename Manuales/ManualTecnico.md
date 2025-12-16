@@ -428,6 +428,137 @@ Interfaz web para visualización remota:
 -Panel de control remoto
 -Sistema de notificaciones
 
+### 8.9 Esquema de Base de Datos MongoDB
+
+La base de datos MongoDB almacena toda la información del sistema de monitoreo en colecciones especializadas.
+
+#### 8.9.1 Colección de Humedad y Temperatura
+
+Almacena las lecturas de humedad y temperatura del sensor DHT11.
+
+**Esquema:**
+
+Temperatura:
+
+```json
+{
+  _id: ObjectId,
+  temperature: Number,     // Temperatura en grados Celsius
+  timestamp: Date,         // Fecha y hora de la lectura
+}
+```
+
+Humedad:
+
+```json
+{
+  _id: ObjectId,
+  humidity: Number,     // Humedad relativa en porcentaje
+  timestamp: Date,         // Fecha y hora de la lectura
+}
+```
+
+**Ejemplo de documento:**
+
+```json
+{
+  _id: ObjectId("674a3f2e1c9d440000a1b2c3"),
+  temperature: 26.5,
+  temperatureF: 79.7,
+  timestamp: ISODate("2024-12-16T22:30:45.000Z"),
+}
+```
+
+![dashboard](assets/humedad-temperatura.jpeg)
+
+#### 8.9.2 Colección de eventos de los LEDS
+
+Registra eventos del sistema como detección de movimiento, alertas y cambios de estado.
+
+**Esquema:**
+
+```json
+{
+  _id: ObjectId,
+  action: String,      // Tipo de evento (ej: "motion_detected", "alert", "system_start")
+  timestamp: Date,         // Fecha y hora del evento
+}
+```
+
+**Ejemplo de documento:**
+
+```javascript
+{
+  _id: ObjectId("674a3f2e1c9d440000a1b2c4"),
+  action: "on",
+  timestamp: ISODate("2024-12-16T22:31:15.000Z"),
+}
+```
+
+![eventos](assets/PIR-LED-BLANCOS.jpeg)
+
+#### 8.9.3 Colección de eventos del ventilador
+
+Registra cada activación y desactivación del ventilador.
+
+**Esquema:**
+
+```json
+{
+  _id: ObjectId,
+  mode: String,          // "open" o "close"
+  temperature: Number,     // Ángulo del servo (0° o 180°)
+  timestamp: Date,         // Fecha y hora de la operación
+}
+```
+
+**Ejemplo de documento:**
+
+```json
+{
+  _id: ObjectId("674a3f2e1c9d440000a1b2c6"),
+  mode: "manual",
+  temperature: 66,
+  timestamp: ISODate("2024-12-16T22:33:10.000Z")
+}
+```
+
+![eventos ventilador](assets/ENABLE-VENTILADOR-MANUAL-AUTOMATICO.jpeg)
+
+#### 8.9.4 Colección de eventos de la puerta
+
+Registra las operaciones de apertura y cierre de la puerta controlada por el servomotor.
+
+**Esquema:**
+
+```json
+{
+  _id: ObjectId,
+  action: String,          // "open" o "close"
+  angle: float,     // Ángulo del servo (0° o 180°)
+  timestamp: Date,         // Fecha y hora de la operación
+}
+```
+
+**Ejemplo de documento:**
+
+```json
+{
+  _id: ObjectId("674a3f2e1c9d440000a1b2c6"),
+  action: "OPEN",
+  angle: 1.8,
+  timestamp: ISODate("2024-12-16T22:33:10.000Z")
+}
+```
+
+![eventos ventilador](assets/APERTURA-AUTOMATICA-PUERTA.jpeg)
+
+#### 8.9.5 Colección de activaciones de alarmas
+
+Registra todas las activaciones de alarmas del sistema.
+
+![alarmas](assets/ACTIVACION-ALARMAS.jpeg)
+
 ---
 
 ## 9. Funcionamiento Detallado
