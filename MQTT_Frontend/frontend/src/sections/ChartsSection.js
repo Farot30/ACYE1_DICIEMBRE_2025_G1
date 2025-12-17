@@ -152,11 +152,15 @@ function ChartsSection({ historicalData, eventsByType, events }) {
             
             <div className="x-axis">
               {hasData && historicalData.map((data, index) => {
-                // Mostrar solo cada 5to punto para no saturar el eje X
                 if (index % 5 === 0 || index === historicalData.length - 1) {
+                  // Formatear fecha como DD/MM
+                  const dateParts = data.date?.split('-'); // ['2025', '12', '11']
+                  const dateLabel = dateParts ? `${dateParts[2]}/${dateParts[1]}` : '';
+                  const timeLabel = data.time?.slice(0,5);
+                  
                   return (
-                    <span key={index} className="x-label" style={{fontSize: '10px'}}>
-                      {data.time?.slice(0,5) || data.date?.slice(5)}
+                    <span key={index} className="x-label" style={{fontSize: '8px', lineHeight: '1.2'}}>
+                      {dateLabel}<br/>{timeLabel}
                     </span>
                   );
                 }
@@ -223,11 +227,15 @@ function ChartsSection({ historicalData, eventsByType, events }) {
             
             <div className="x-axis">
               {hasData && historicalData.map((data, index) => {
-                // Mostrar solo cada 5to punto
                 if (index % 5 === 0 || index === historicalData.length - 1) {
+                  // Formatear fecha como DD/MM
+                  const dateParts = data.date?.split('-'); // ['2025', '12', '11']
+                  const dateLabel = dateParts ? `${dateParts[2]}/${dateParts[1]}` : '';
+                  const timeLabel = data.time?.slice(0,5);
+                  
                   return (
-                    <span key={index} className="x-label" style={{fontSize: '10px'}}>
-                      {data.time?.slice(0,5) || data.date?.slice(5)}
+                    <span key={index} className="x-label" style={{fontSize: '8px', lineHeight: '1.2'}}>
+                      {dateLabel}<br/>{timeLabel}
                     </span>
                   );
                 }
