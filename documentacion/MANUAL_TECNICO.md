@@ -440,31 +440,30 @@ Almacena las lecturas de humedad y temperatura del sensor DHT11.
 
 Temperatura:
 
-```json
+```javascript
 {
   _id: ObjectId,
-  temperature: Number,     // Temperatura en grados Celsius
-  timestamp: Date,         // Fecha y hora de la lectura
+  temperature: float,     
+  timestamp: Date,         
 }
 ```
 
 Humedad:
 
-```json
+```javascript
 {
   _id: ObjectId,
-  humidity: Number,     // Humedad relativa en porcentaje
-  timestamp: Date,         // Fecha y hora de la lectura
+  humidity: float,     
+  timestamp: Date,         
 }
 ```
 
 **Ejemplo de documento:**
 
-```json
+```javascript
 {
   _id: ObjectId("674a3f2e1c9d440000a1b2c3"),
   temperature: 26.5,
-  temperatureF: 79.7,
   timestamp: ISODate("2024-12-16T22:30:45.000Z"),
 }
 ```
@@ -477,11 +476,11 @@ Registra eventos del sistema como detección de movimiento, alertas y cambios de
 
 **Esquema:**
 
-```json
+```javascript
 {
   _id: ObjectId,
-  action: String,      // Tipo de evento (ej: "motion_detected", "alert", "system_start")
-  timestamp: Date,         // Fecha y hora del evento
+  action: String,      
+  timestamp: Date,         
 }
 ```
 
@@ -503,23 +502,23 @@ Registra cada activación y desactivación del ventilador.
 
 **Esquema:**
 
-```json
+```javascript
 {
   _id: ObjectId,
-  mode: String,          // "open" o "close"
-  temperature: Number,     // Ángulo del servo (0° o 180°)
-  timestamp: Date,         // Fecha y hora de la operación
+  mode: String,          
+  timestamp: Date,
+  duration: Number          
 }
 ```
 
 **Ejemplo de documento:**
 
-```json
+```javascript
 {
   _id: ObjectId("674a3f2e1c9d440000a1b2c6"),
   mode: "manual",
-  temperature: 66,
-  timestamp: ISODate("2024-12-16T22:33:10.000Z")
+  timestamp: ISODate("2024-12-16T22:33:10.000Z"),
+  duration: 20
 }
 ```
 
@@ -531,18 +530,18 @@ Registra las operaciones de apertura y cierre de la puerta controlada por el ser
 
 **Esquema:**
 
-```json
+```javascript
 {
   _id: ObjectId,
-  action: String,          // "open" o "close"
-  angle: float,     // Ángulo del servo (0° o 180°)
-  timestamp: Date,         // Fecha y hora de la operación
+  action: String,         
+  angle: float,     
+  timestamp: Date,        
 }
 ```
 
 **Ejemplo de documento:**
 
-```json
+```javascript
 {
   _id: ObjectId("674a3f2e1c9d440000a1b2c6"),
   action: "OPEN",
