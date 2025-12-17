@@ -325,17 +325,25 @@ function App() {
         
         // Actualizar temperatura y humedad en tiempo real desde la última lectura disponible
         if (tempData.length > 0) {
-          setSystemData(prev => ({
-            ...prev,
-            temperature: Math.round(tempData[0].value)
-          }));
+          const newTemp = Math.round(tempData[0].value);
+          // Solo actualizar si el valor es válido (no es 0 ni null)
+          if (newTemp > 0) {
+            setSystemData(prev => ({
+              ...prev,
+              temperature: newTemp
+            }));
+          }
         }
-        
+
         if (humidityData.length > 0) {
-          setSystemData(prev => ({
-            ...prev,
-            humidity: Math.round(humidityData[0].value)
-          }));
+          const newHumidity = Math.round(humidityData[0].value);
+          // Solo actualizar si el valor es válido (no es 0 ni null)
+          if (newHumidity > 0) {
+            setSystemData(prev => ({
+              ...prev,
+              humidity: newHumidity
+            }));
+          }
         }
         
         // Calcular estadísticas del día
