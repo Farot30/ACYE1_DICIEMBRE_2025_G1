@@ -267,19 +267,19 @@ function App() {
         console.log('📊 Temperaturas ordenadas:', sortedTemps.length);
         console.log('📊 Humedades ordenadas:', sortedHumidity.length);
         
-        // **FILTRAR POR LOS ÚLTIMOS 3 DÍAS**
-        const threeDaysAgo = new Date();
-        threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-        const threeDaysAgoTimestamp = threeDaysAgo.getTime();
+        // **FILTRAR POR LOS ÚLTIMOS 5 DÍAS**
+        const fiveDaysAgo = new Date();
+        fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+        const fiveDaysAgoTimestamp = fiveDaysAgo.getTime();
         
-        console.log('📅 Filtrando datos desde:', threeDaysAgo.toISOString());
+        console.log('📅 Filtrando datos desde:', fiveDaysAgo.toISOString());
         
-        // Filtrar temperaturas de los últimos 3 días
-        const recentTemps = sortedTemps.filter(t => t.timestamp >= threeDaysAgoTimestamp);
-        const recentHumidity = sortedHumidity.filter(h => h.timestamp >= threeDaysAgoTimestamp);
+        // Filtrar temperaturas de los últimos 5 días
+        const recentTemps = sortedTemps.filter(t => t.timestamp >= fiveDaysAgoTimestamp);
+        const recentHumidity = sortedHumidity.filter(h => h.timestamp >= fiveDaysAgoTimestamp);
         
-        console.log('📊 Temperaturas últimos 3 días:', recentTemps.length);
-        console.log('📊 Humedades últimos 3 días:', recentHumidity.length);
+        console.log('📊 Temperaturas últimos 5 días:', recentTemps.length);
+        console.log('📊 Humedades últimos 5 días:', recentHumidity.length);
         
         // Combinar datos donde los timestamps coincidan exactamente (o casi)
         const combined = [];
@@ -317,8 +317,8 @@ function App() {
           console.log(`✅ No es necesario simplificar: ${combined.length} puntos`);
         }
         
-        // Ya no limitamos a 30 puntos - mostramos TODOS los de los últimos 3 días (o simplificados)
-        console.log('📊 Datos combinados (últimos 3 días):', finalData.length, 'puntos');
+        // Ya no limitamos a 30 puntos - mostramos TODOS los de los últimos 5 días (o simplificados)
+        console.log('📊 Datos combinados (últimos 5 días):', finalData.length, 'puntos');
         console.log('📊 Muestra de datos:', finalData.slice(0, 3));
         
         setHistoricalData(finalData);
@@ -355,42 +355,40 @@ function App() {
           avgDoorOpenTime: doorStats.avg_duration_formatted || '0m 0s' // <- REAL de MongoDB
         });
 
-        // **CALCULAR RESUMEN DE LOS ÚLTIMOS 3 DÍAS**
-        // Usar los datos ya filtrados (recentTemps y recentHumidity)
-        const avgTemp3Days = recentTemps.length > 0 
+        const avgTemp5Days = recentTemps.length > 0 
           ? recentTemps.reduce((sum, t) => sum + t.value, 0) / recentTemps.length 
           : 0;
-        
-        const avgHumidity3Days = recentHumidity.length > 0 
+
+        const avgHumidity5Days = recentHumidity.length > 0 
           ? recentHumidity.reduce((sum, h) => sum + h.value, 0) / recentHumidity.length 
           : 0;
-        
-        // Filtrar eventos de los últimos 3 días
-        const eventsLast3Days = formattedEvents.filter(e => {
+
+        // Filtrar eventos de los últimos 5 días
+        const eventsLast5Days = formattedEvents.filter(e => {
           const eventTimestamp = new Date(e.timestamp).getTime();
-          return eventTimestamp >= threeDaysAgoTimestamp;
+          return eventTimestamp >= fiveDaysAgoTimestamp;
         });
-        
-        const totalAccessLast3Days = eventsLast3Days.filter(e => e.type === 'Acceso').length;
-        
+
+        const totalAccessLast5Days = eventsLast5Days.filter(e => e.type === 'Acceso').length;
+
         // Calcular eficiencia del sistema (ejemplo: basado en lecturas exitosas)
-        const totalReadingsExpected = 3 * 24 * 60 * 6; // 3 días * 24h * 60min * 6 lecturas/min
+        const totalReadingsExpected = 5 * 24 * 60 * 6; // 5 días * 24h * 60min * 6 lecturas/min
         const totalReadingsReceived = recentTemps.length + recentHumidity.length;
         const systemEfficiency = totalReadingsExpected > 0 
           ? Math.min((totalReadingsReceived / totalReadingsExpected) * 100, 100)
           : 0;
-        
+
         setThreeDaysSummary({
-          avgTemp: Math.round(avgTemp3Days * 10) / 10, // 1 decimal
-          avgHumidity: Math.round(avgHumidity3Days * 10) / 10, // 1 decimal
-          totalAccess: totalAccessLast3Days,
+          avgTemp: Math.round(avgTemp5Days * 10) / 10, // 1 decimal
+          avgHumidity: Math.round(avgHumidity5Days * 10) / 10, // 1 decimal
+          totalAccess: totalAccessLast5Days,
           systemEfficiency: Math.round(systemEfficiency * 10) / 10 // 1 decimal
         });
-        
-        console.log('📊 Resumen 3 días calculado:', {
-          avgTemp: avgTemp3Days,
-          avgHumidity: avgHumidity3Days,
-          totalAccess: totalAccessLast3Days,
+
+        console.log('📊 Resumen 5 días calculado:', {
+          avgTemp: avgTemp5Days,
+          avgHumidity: avgHumidity5Days,
+          totalAccess: totalAccessLast5Days,
           efficiency: systemEfficiency
         });
       } else {
